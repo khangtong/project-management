@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\TaskComment;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class TaskCommentController extends Controller
@@ -35,6 +36,10 @@ class TaskCommentController extends Controller
             'entity_id' => $task->id,
             'action' => ActivityLog::ACTION_COMMENTED,
         ]);
+
+        if ($task->created_by !== $request->user()->id) {
+            NotificationService::commentAdded($task->created_by, $task->title, $task->id, $request->user()->name);
+        }
 
         return response()->json($comment->load('user'), 201);
     }

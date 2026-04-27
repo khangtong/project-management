@@ -9,6 +9,7 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('search', \App\Http\Controllers\Api\SearchController::class);
     Route::post('auth/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
     Route::get('auth/me', [\App\Http\Controllers\Api\AuthController::class, 'me']);
     Route::get('invitations/{token}/accept', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'acceptInvitation']);
@@ -45,4 +46,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('tasks/{task}/activity', [\App\Http\Controllers\Api\ActivityLogController::class, 'index']);
     Route::get('me/tasks', [\App\Http\Controllers\Api\TaskController::class, 'myTasks']);
+
+    Route::prefix('notifications')->group(function () {
+        Route::get('/',             [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+        Route::get('unread-count',  [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
+        Route::patch('{id}/read',   [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
+        Route::patch('read-all',     [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
+        Route::delete('{id}',       [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
+    });
 });

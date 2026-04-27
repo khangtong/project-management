@@ -2,6 +2,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../store/AuthContext';
 import { workspaceApi } from '../../api/workspaces';
+import NotificationBell from '../../components/ui/NotificationBell';
+import SearchBar from '../../components/ui/SearchBar';
 
 export default function Sidebar() {
     const navigate = useNavigate();
@@ -19,8 +21,8 @@ export default function Sidebar() {
 
     return (
         <aside className="h-screen flex flex-col w-64 bg-cream border-r border-cream-border">
-            {/* Logo */}
-            <div className="p-5 border-b border-cream-border">
+            {/* Logo + Bell */}
+            <div className="p-5 border-b border-cream-border flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <div className="w-8 h-8 flex items-center justify-center bg-ocean rounded-lg">
                         <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -29,6 +31,12 @@ export default function Sidebar() {
                     </div>
                     <h2 className="text-base font-semibold text-charcoal">Project Manager</h2>
                 </div>
+                <NotificationBell />
+            </div>
+
+            {/* Search */}
+            <div className="px-4 py-3 border-b border-cream-border">
+                <SearchBar />
             </div>
 
             {/* Workspace Section */}

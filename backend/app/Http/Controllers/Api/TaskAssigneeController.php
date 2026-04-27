@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Task;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 
 class TaskAssigneeController extends Controller
@@ -27,6 +28,10 @@ class TaskAssigneeController extends Controller
             'action' => ActivityLog::ACTION_ASSIGNED,
             'metadata' => ['assigned_user_id' => $data['user_id']],
         ]);
+
+        if ($data['user_id'] !== $request->user()->id) {
+            NotificationService::taskAssigned($data['user_id'], $task->title, $task->id, $request->user()->name);
+        }
 
         return response()->json($task->load('assignees'));
     }

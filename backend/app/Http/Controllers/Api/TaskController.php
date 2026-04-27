@@ -11,18 +11,29 @@ use Illuminate\Http\Request;
 
 class TaskController extends Controller
 {
-    public function index(Board $board)
+    public function index(Request $request, Board $board)
     {
         $this->authorizeBoardAccess($board);
 
-        $tasks = $board->tasks()
-            ->with(['assignees', 'creator'])
-            ->withCount('comments')
-            ->orderBy('position')
-            ->get()
-            ->groupBy('column_id');
+        $query = $board->tasks()->with(['assignees', 'creator'])->withCount('comments');
 
-        return response()->json($tasks);
+        if ($request->filled('assignee_id')) {
+            $query->assignedTo($request->input('assignee_id'));
+        }
+        if ($request->filled('priority')) {
+            $query->where('priority', $request->input('priority'));
+        }
+        if ($request->filled('due_before')) {
+            $query->where('due_date', '<=', $request->input('due_before'));
+        }
+        if ($request->filled('due_after')) {
+            $query->where('due_date', '>=', $request->input('due_after'));
+        }
+        if ($request->boolean('overdue')) {
+            $query->overdue();
+        }
+
+        return response()->json($query->orderBy('position')->get()->groupBy('column_id'));
     }
 
     public function store(Request $request, BoardColumn $column)
