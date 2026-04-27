@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* ── Brand Palette (DESIGN.md) ── */
+  --color-cream:       #F6E3C5;
+  --color-cream-dark:  #E8D5B0;
+  --color-cream-card:  #FAF0E4;
+  --color-sage:        #A0D995;
+  --color-teal:        #6CC4A1;
+  --color-teal-dark:   #55B08D;
+  --color-ocean:       #4CACBC;
+  --color-ocean-dark:  #3A9AAA;
+
+  /* ── Text ── */
+  --color-charcoal:    #2C2C2C;
+  --color-gray-mid:    #6B6B6B;
+  --color-gray-light:  #9B9B9B;
+
+  /* ── Legacy aliases (keep existing code working) ── */
+  --color-cream-light: #FAF0E4;
+  --color-cream-border:#E8D5B0;
+  --color-mint:        #6CC4A1;
+  --color-gray-medium: #6B6B6B;
+  --color-border:      #E8D5B0;
+
+  /* ── Typography ── */
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+
+  /* ── Radii ── */
+  --radius-input:  8px;
+  --radius-card:   12px;
+  --radius-panel:  16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-charcoal);
+  background-color: var(--color-cream);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root { min-height: 100vh; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-cream-dark); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-teal); }
+
+/* ── Animations ── */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes blobFloat {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%       { transform: translateY(-18px) scale(1.04); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-slide-in-right { animation: slideInRight 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-fade-in        { animation: fadeIn 0.22s ease; }
+.animate-spin           { animation: spin 0.75s linear infinite; }
+
+/* ── Column top-accent borders ── */
+.col-accent-todo     { border-top: 3px solid var(--color-ocean) !important; }
+.col-accent-progress { border-top: 3px solid var(--color-teal)  !important; }
+.col-accent-review   { border-top: 3px solid var(--color-sage)  !important; }
+.col-accent-done     { border-top: 3px solid #C8D5B9            !important; }
+
+/* ── Task card — Done state ── */
+.task-card-done { opacity: 0.72; filter: saturate(0.55); }
+
+/* ── ProseMirror / Tiptap ── */
+.ProseMirror { outline: none; min-height: 100px; font-family: var(--font-sans); font-size: 14px; }
+.ProseMirror p { margin: 0 0 0.5em; }
+.ProseMirror p.is-editor-empty:first-child::before {
+  color: var(--color-gray-light);
+  content: attr(data-placeholder);
+  float: left; height: 0; pointer-events: none;
+}

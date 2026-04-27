@@ -1,0 +1,77 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
+use App\Models\Task;
+use App\Models\TaskAttachment;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+
+class TaskAttachmentController extends Controller
+{
+    public function store(Request $request, Task $task)
+    {
+        $this->authorizeTaskAccess($task);
+
+        $request->validate(['file' => 'required|file|max:20480']);
+
+        $file = $request->file('file');
+        $fileName = Str::uuid() . '.' . $file->getClientOriginalExtension();
+        $filePath = "attachments/{$task->id}/{$fileName}";
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . config('services.supabase.service_key'),
+            'Content-Type' => $file->getMimeType(),
+        ])->put(
+            config('services.supabase.url') . '/storage/v1/object/' . config('services.supabase.bucket') . '/' . $filePath,
+            file_get_contents($file->getRealPath())
+        );
+
+        abort_if(!$response->successful(), 500, 'File upload failed.');
+
+        $publicUrl = config('services.supabase.url') . '/storage/v1/object/public/' . config('services.supabase.bucket') . '/' . $filePath;
+
+        $attachment = TaskAttachment::create([
+            'task_id' => $task->id,
+            'uploaded_by' => $request->user()->id,
+            'file_name' => $file->getClientOriginalName(),
+            'file_url' => $publicUrl,
+            'file_size' => $file->getSize(),
+            'mime_type' => $file->getMimeType(),
+        ]);
+
+        ActivityLog::create([
+            'user_id' => $request->user()->id,
+            'entity_type' => Task::class,
+            'entity_id' => $task->id,
+            'action' => ActivityLog::ACTION_ATTACHMENT_ADD,
+            'metadata' => ['file_name' => $file->getClientOriginalName()],
+        ]);
+
+        return response()->json($attachment, 201);
+    }
+
+    public function destroy(Request $request, TaskAttachment $attachment)
+    {
+        abort_unless($attachment->uploaded_by === $request->user()->id, 403);
+        $attachment->delete();
+        return response()->json(['message' => 'Attachment deleted.']);
+    }
+
+    private function authorizeTaskAccess(Task $task)
+    {
+        $column = $task->column;
+        $board = $column->board;
+        $project = $board->project;
+        $workspace = $project->workspace;
+        $userId = auth()->id();
+        abort_unless(
+            $workspace->members()->where('users.id', $userId)->exists(),
+            403,
+            'Access denied.'
+        );
+    }
+}
