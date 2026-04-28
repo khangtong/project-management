@@ -11,8 +11,8 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('search', \App\Http\Controllers\Api\SearchController::class);
     Route::post('auth/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
-    Route::get('auth/me', [\App\Http\Controllers\Api\AuthController::class, 'me']);
-    Route::get('invitations/{token}/accept', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'acceptInvitation']);
+    Route::get('auth/me',      [\App\Http\Controllers\Api\AuthController::class, 'me']);
+    Route::post('invitations/{token}/accept', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'acceptInvitation']);
 
     Route::apiResource('workspaces', \App\Http\Controllers\Api\WorkspaceController::class);
     
@@ -27,9 +27,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('projects/{project}/board', [\App\Http\Controllers\Api\BoardController::class, 'show']);
     Route::post('projects/{project}/board/columns', [\App\Http\Controllers\Api\BoardColumnController::class, 'store']);
+    Route::patch('columns/reorder', [\App\Http\Controllers\Api\BoardColumnController::class, 'reorder']);
     Route::patch('columns/{column}', [\App\Http\Controllers\Api\BoardColumnController::class, 'update']);
     Route::delete('columns/{column}', [\App\Http\Controllers\Api\BoardColumnController::class, 'destroy']);
-    Route::patch('columns/reorder', [\App\Http\Controllers\Api\BoardColumnController::class, 'reorder']);
 
     Route::get('boards/{board}/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
     Route::post('columns/{column}/tasks', [\App\Http\Controllers\Api\TaskController::class, 'store']);
@@ -46,6 +46,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('tasks/{task}/activity', [\App\Http\Controllers\Api\ActivityLogController::class, 'index']);
     Route::get('me/tasks', [\App\Http\Controllers\Api\TaskController::class, 'myTasks']);
+    Route::get('dashboard', [\App\Http\Controllers\Api\DashboardController::class, 'index']);
+    Route::get('projects/{project}/summary', [\App\Http\Controllers\Api\DashboardController::class, 'projectSummary']);
 
     Route::prefix('notifications')->group(function () {
         Route::get('/',             [\App\Http\Controllers\Api\NotificationController::class, 'index']);

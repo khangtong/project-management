@@ -24,6 +24,6 @@ class Board extends Model
 
     public function tasks()
     {
-        return $this->hasManyThrough(Task::class, BoardColumn::class);
+        return $this->hasManyThrough(Task::class, BoardColumn::class, 'board_id', 'column_id', 'id');
     }
 }

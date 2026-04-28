@@ -23,7 +23,7 @@ class WorkspaceController extends Controller
         // Merge and remove duplicates (in case user is both owner and member)
         $workspaces = $ownedWorkspaces->merge($memberWorkspaces)->unique('id')->values();
         
-        return response()->json($workspaces->load('owner'));
+        return response()->json($workspaces->load(['owner', 'projects']));
     }
 
     public function store(Request $request)

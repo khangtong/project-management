@@ -26,18 +26,20 @@ export default function WorkspacePage() {
       setShowCreateProject(false);
       setProjectName("");
       if (project.data.board?.id) {
-        navigate(`/boards/${project.data.board.id}`);
+        navigate(`/projects/${project.data.id}/board`);
       }
     },
   });
 
   const inviteMutation = useMutation({
-    mutationFn: (data) =>
-      id === inviteRole ? workspaceApi.inviteByEmail(id, data) : Promise.resolve(),
+    mutationFn: (data) => workspaceApi.inviteByEmail(id, data),
     onSuccess: () => {
       setShowInvite(false);
       setInviteEmail("");
       setInviteRole("member");
+    },
+    onError: (err) => {
+      alert(err.response?.data?.message || "Failed to send invitation");
     },
   });
 
@@ -55,7 +57,7 @@ export default function WorkspacePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-cream-light">
+      <div className="flex items-center justify-center h-full">
         <div className="text-gray-medium">Loading...</div>
       </div>
     );
@@ -64,9 +66,7 @@ export default function WorkspacePage() {
   const projects = workspace?.projects || [];
 
   return (
-    <div className="flex h-screen bg-cream-light">
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto p-8">
+    <div className="max-w-5xl mx-auto p-8">
           <div className="flex items-center justify-between mb-8">
             <div>
               <button
@@ -228,7 +228,7 @@ export default function WorkspacePage() {
                       {project.status}
                     </span>
                     <button
-                      onClick={() => project.board?.id && navigate(`/boards/${project.board.id}`)}
+                      onClick={() => project.id && navigate(`/projects/${project.id}/board`)}
                       className="text-sm font-medium text-ocean hover:text-ocean/80"
                     >
                       Open Board →
@@ -237,9 +237,7 @@ export default function WorkspacePage() {
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   );
 }

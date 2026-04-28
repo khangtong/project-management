@@ -13,7 +13,7 @@ const PRIORITY_OPTIONS = [
     { value: 'urgent', label: 'Urgent', bg: 'bg-red-100', color: 'text-red-600', border: 'border-red-200' },
 ];
 
-export default function TaskDrawer({ task, onClose }) {
+export default function TaskDrawer({ task, projectId, isCreateMode = false, onClose, onSave }) {
     const queryClient = useQueryClient();
     const [editedTask, setEditedTask] = useState(task);
     
@@ -37,14 +37,20 @@ export default function TaskDrawer({ task, onClose }) {
         return () => document.removeEventListener('keydown', handleKey);
     }, [onClose]);
 
-    const handleSave = () => updateMutation.mutate(editedTask);
+    const handleSave = () => {
+        if (isCreateMode) {
+            onSave?.(editedTask);
+        } else {
+            updateMutation.mutate(editedTask);
+        }
+    };
 
     return (
         <>
             <div className="fixed inset-0 z-40 bg-cream/70" onClick={onClose} />
             <aside className="fixed right-0 top-0 h-full z-50 flex flex-col overflow-hidden bg-white rounded-l-2xl shadow-lg" style={{ width: '40%', maxWidth: '500px', boxShadow: '-4px 0 20px rgba(0,0,0,0.1)' }}>
                 <div className="flex items-center justify-between px-6 py-4 border-b border-cream-border">
-                    <h2 className="text-lg font-semibold text-charcoal">Task Details</h2>
+                    <h2 className="text-lg font-semibold text-charcoal">{isCreateMode ? "Create Task" : "Task Details"}</h2>
                     <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-50 text-gray-medium">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -57,7 +63,8 @@ export default function TaskDrawer({ task, onClose }) {
                         type="text"
                         value={editedTask.title || fullTask?.title || ''}
                         onChange={(e) => setEditedTask({ ...editedTask, title: e.target.value })}
-                        className="w-full text-xl font-semibold bg-transparent border-none outline-none text-charcoal"
+                        placeholder="Task title"
+                        className="w-full text-xl font-semibold bg-transparent border-none outline-none text-charcoal placeholder-gray-medium"
                     />
 
                     <div className="grid grid-cols-2 gap-4">
@@ -92,38 +99,42 @@ export default function TaskDrawer({ task, onClose }) {
 
                     <div>
                         <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">Assignees</label>
-                        <AssigneesPanel taskId={task.id} task={fullTask} />
+                        {!isCreateMode && <AssigneesPanel taskId={task.id} task={fullTask} />}
                     </div>
 
                     <div>
                         <label className="block text-sm font-medium mb-2 text-charcoal">Description</label>
                         <div className="rounded-lg p-4 bg-cream-light border border-cream-border">
                             <TaskDescription 
-                                content={fullTask?.description || ''} 
+                                content={isCreateMode ? editedTask.description || '' : fullTask?.description || ''} 
                                 editable={true}
                                 onUpdate={(html) => setEditedTask({ ...editedTask, description: html })} 
                             />
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium mb-2 text-charcoal">Comments</label>
-                        <TaskComments taskId={task.id} comments={fullTask?.comments || []} />
-                    </div>
+                    {!isCreateMode && (
+                        <>
+                            <div>
+                                <label className="block text-sm font-medium mb-2 text-charcoal">Comments</label>
+                                <TaskComments taskId={task.id} comments={fullTask?.comments || []} />
+                            </div>
 
-                    <div>
-                        <label className="block text-sm font-medium mb-2 text-charcoal">Attachments</label>
-                        <AttachmentsPanel taskId={task.id} attachments={fullTask?.attachments || []} />
-                    </div>
+                            <div>
+                                <label className="block text-sm font-medium mb-2 text-charcoal">Attachments</label>
+                                <AttachmentsPanel taskId={task.id} attachments={fullTask?.attachments || []} />
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 <div className="p-6 border-t border-cream-border">
                     <button
                         onClick={handleSave}
-                        disabled={updateMutation.isPending}
+                        disabled={isCreateMode ? !editedTask.title?.trim() : updateMutation.isPending}
                         className="w-full py-2.5 font-medium rounded-lg text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50"
                     >
-                        {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+                        {isCreateMode ? 'Create Task' : updateMutation.isPending ? 'Saving...' : 'Save Changes'}
                     </button>
                 </div>
             </aside>
