@@ -40,10 +40,17 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: () => taskApi.column.delete(column.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["board"]);
+    },
+  });
+
   const renameMutation = useMutation({
     mutationFn: (data) => taskApi.column.update(column.id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries(["board-tasks", boardId]);
+      queryClient.invalidateQueries(["board"]);
       setIsEditing(false);
     },
   });
@@ -62,7 +69,7 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
 
   return (
     <div
-      className={`flex-shrink-0 w-72 rounded-xl flex flex-col max-h-full transition-all ${isOver ? "ring-2 ring-ocean ring-offset-2" : ""}`}
+      className={`group flex-shrink-0 w-72 rounded-xl flex flex-col max-h-full transition-all ${isOver ? "ring-2 ring-ocean ring-offset-2" : ""}`}
       style={{
         backgroundColor: "#FAF0E4",
         boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
@@ -87,23 +94,39 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
             </button>
           </form>
         ) : (
-          <div className="flex items-center gap-2">
-            <h3
-              className="text-sm font-semibold cursor-pointer text-charcoal"
-              onDoubleClick={() => {
-                setEditName(column.name);
-                setIsEditing(true);
+          <>
+            <div className="flex items-center gap-2">
+              <h3
+                className="text-sm font-semibold cursor-pointer text-charcoal"
+                onDoubleClick={() => {
+                  setEditName(column.name);
+                  setIsEditing(true);
+                }}
+              >
+                {column.name}
+              </h3>
+              <span
+                className="text-xs px-1.5 py-0.5 rounded-full text-white"
+                style={{ backgroundColor: accentColor }}
+              >
+                {tasks.length}
+              </span>
+            </div>
+            <button
+              onClick={() => {
+                if (window.confirm(`Delete column "${column.name}" and all its tasks?`)) {
+                  deleteMutation.mutate();
+                }
               }}
+              disabled={deleteMutation.isPending}
+              className="p-1 rounded text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+              title="Delete column"
             >
-              {column.name}
-            </h3>
-            <span
-              className="text-xs px-1.5 py-0.5 rounded-full text-white"
-              style={{ backgroundColor: accentColor }}
-            >
-              {tasks.length}
-            </span>
-          </div>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </>
         )}
       </div>
 

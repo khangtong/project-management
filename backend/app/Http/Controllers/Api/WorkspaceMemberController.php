@@ -65,23 +65,41 @@ class WorkspaceMemberController extends Controller
 
         $data = $request->validate([
             'email' => 'required|email',
-            'role' => 'nullable|in:admin,member',
+            'role'  => 'nullable|in:admin,member',
         ]);
 
+        $role = $data['role'] ?? 'member';
         $existingUser = User::where('email', $data['email'])->first();
 
-        if ($existingUser && $workspace->workspaceMemberships()->where('user_id', $existingUser->id)->exists()) {
-            return response()->json(['message' => 'User is already a member.'], 422);
+        // If the user exists in the system, add them directly — no email needed
+        if ($existingUser) {
+            if ($workspace->workspaceMemberships()->where('user_id', $existingUser->id)->exists()) {
+                return response()->json(['message' => 'User is already a member.'], 422);
+            }
+
+            $member = WorkspaceMember::create([
+                'workspace_id' => $workspace->id,
+                'user_id'      => $existingUser->id,
+                'role'         => $role,
+                'joined_at'    => now(),
+            ]);
+
+            return response()->json([
+                'message' => 'Member added.',
+                'member'  => $member->load('user'),
+                'added_directly' => true,
+            ], 201);
         }
 
+        // User not in system — send email invitation
         $invitation = WorkspaceInvitation::updateOrCreate(
             [
                 'workspace_id' => $workspace->id,
-                'email' => $data['email'],
+                'email'        => $data['email'],
             ],
             [
-                'token' => Str::random(64),
-                'role' => $data['role'] ?? 'member',
+                'token'      => Str::random(64),
+                'role'       => $role,
                 'invited_by' => $request->user()->id,
                 'expires_at' => now()->addHours(48),
                 'accepted_at' => null,
@@ -90,7 +108,7 @@ class WorkspaceMemberController extends Controller
 
         Mail::to($data['email'])->queue(new WorkspaceInvitationMail($invitation));
 
-        return response()->json(['message' => 'Invitation sent.']);
+        return response()->json(['message' => 'Invitation email sent.', 'added_directly' => false]);
     }
 
     public function showInvitation(string $token)

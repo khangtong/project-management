@@ -1,14 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { notificationApi } from "../../api/notifications";
 import NotificationBell from "../ui/NotificationBell";
 import SearchBar from "../ui/SearchBar";
 
 export default function Topbar({ onMenuClick }) {
-  const { data } = useQuery({
-    queryKey: ["notifications-unread"],
-    queryFn: () => notificationApi.unreadCount().then((r) => r.data),
-    refetchInterval: 30_000,
-  });
+  // Removed — NotificationBell manages its own count with the shared key
 
   return (
     <header className="h-16 bg-cream border-b border-cream-border px-6 flex items-center justify-between shrink-0">
@@ -33,7 +27,7 @@ export default function Topbar({ onMenuClick }) {
         </button>
         <SearchBar />
       </div>
-      <NotificationBell unreadCount={data?.count ?? 0} />
+      <NotificationBell />
     </header>
   );
 }

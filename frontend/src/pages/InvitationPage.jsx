@@ -1,18 +1,37 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { workspaceApi } from "../api/workspaces";
+import { useAuth } from "../store/AuthContext";
 
 export default function InvitationPage() {
   const { token } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, loading: authLoading } = useAuth();
   const [error, setError] = useState(null);
 
-  const { data: invitation, isLoading } = useQuery({
+  const { data: invitation, isLoading, error: fetchError } = useQuery({
     queryKey: ["invitation", token],
     queryFn: () => workspaceApi.showInvitation(token).then((r) => r.data),
     retry: false,
   });
+
+  // Once we know the user is not logged in, redirect to login with the
+  // invitation token so they can come back after authenticating.
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate(`/login?invitation=${token}`, { replace: true, state: { from: location } });
+    }
+  }, [authLoading, user, token, navigate, location]);
+
+  if (authLoading || (!user && !fetchError)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cream-light">
+        <div className="text-gray-medium">Checking authentication...</div>
+      </div>
+    );
+  }
 
   const acceptMutation = useMutation({
     mutationFn: () => workspaceApi.acceptInvitation(token),

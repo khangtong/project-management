@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../store/AuthContext";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,7 +17,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate("/workspaces");
+      const invitationToken = searchParams.get('invitation');
+      if (invitationToken) {
+        navigate(`/invitations/${invitationToken}`);
+      } else {
+        navigate("/workspaces");
+      }
     } catch (err) {
       setError(err.response?.data?.errors?.email?.[0] || "Invalid credentials");
     } finally {

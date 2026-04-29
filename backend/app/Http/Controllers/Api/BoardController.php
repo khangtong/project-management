@@ -14,7 +14,7 @@ class BoardController extends Controller
         $this->authorizeProjectAccess($project);
         $board = $project->board;
         abort_if(!$board, 404, 'Board not found.');
-        return response()->json($board->load('columns'));
+        return response()->json($board->load(['columns', 'project']));
     }
 
     private function authorizeProjectAccess(Project $project)

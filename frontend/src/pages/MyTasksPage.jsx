@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { taskApi } from '../api/tasks';
 import { useAuth } from '../store/AuthContext';
@@ -33,17 +34,29 @@ export default function MyTasksPage() {
 }
 
 function MyTaskRow({ task }) {
+    const navigate = useNavigate();
     const isOverdue = task.due_date && new Date(task.due_date) < new Date();
+    const projectId = task.column?.board?.project?.id;
+
+    const handleClick = () => {
+        if (projectId) navigate(`/projects/${projectId}/board`);
+    };
 
     return (
-        <div className="flex items-center gap-4 p-4 bg-white rounded-xl shadow-sm border border-cream-border">
+        <div
+            onClick={handleClick}
+            className={`flex items-center gap-4 p-4 bg-white rounded-xl shadow-sm border border-cream-border transition-shadow ${
+                projectId ? 'cursor-pointer hover:shadow-md hover:border-ocean/30' : ''
+            }`}
+        >
             <div className="flex-shrink-0">
                 <div className={`w-3 h-3 rounded-full ${isOverdue ? 'bg-red-500' : 'bg-ocean'}`}></div>
             </div>
             <div className="flex-1 min-w-0">
                 <h3 className="text-sm font-medium text-charcoal">{task.title}</h3>
                 <p className="text-xs text-gray-medium mt-0.5">
-                    {task.column?.board?.project?.name} / {task.column?.name}
+                    {task.column?.board?.project?.name}
+                    {task.column?.name ? ` / ${task.column.name}` : ''}
                 </p>
             </div>
             {task.due_date && (
@@ -51,9 +64,19 @@ function MyTaskRow({ task }) {
                     {format(new Date(task.due_date), 'MMM d, yyyy')}
                 </div>
             )}
-            <div className={`text-xs px-2 py-0.5 rounded border ${task.priority === 'urgent' ? 'bg-red-100 text-red-700 border-red-200' : task.priority === 'high' ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-gray-100 text-gray-medium'}`}>
+            <div className={`text-xs px-2 py-0.5 rounded border ${
+                task.priority === 'urgent' ? 'bg-red-100 text-red-700 border-red-200'
+                : task.priority === 'high' ? 'bg-orange-100 text-orange-700 border-orange-200'
+                : task.priority === 'medium' ? 'bg-sage/20 text-sage border-sage/30'
+                : 'bg-gray-100 text-gray-medium border-gray-200'
+            }`}>
                 {task.priority}
             </div>
+            {projectId && (
+                <svg className="w-4 h-4 text-gray-medium shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+            )}
         </div>
     );
 }

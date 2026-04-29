@@ -96,6 +96,7 @@ export default function WorkspacesPage() {
 }
 
 function WorkspaceCard({ workspace }) {
+  const navigate = useNavigate();
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [projectName, setProjectName] = useState("");
   const queryClient = useQueryClient();
@@ -104,16 +105,19 @@ function WorkspaceCard({ workspace }) {
     queryKey: ["workspace", workspace.id],
     queryFn: () => workspaceApi.show(workspace.id).then((r) => r.data),
     initialData: workspace,
+    // Don't auto-fetch on mount — use the index data which now includes projects
+    staleTime: 30_000,
   });
 
   const createProjectMutation = useMutation({
     mutationFn: (data) => projectApi.create(workspace.id, data),
     onSuccess: (project) => {
       queryClient.invalidateQueries(["workspace", workspace.id]);
+      queryClient.invalidateQueries(["workspaces"]);
       setShowCreateProject(false);
       setProjectName("");
       if (project.data.id) {
-        window.location.href = `/projects/${project.data.id}/board`;
+        navigate(`/projects/${project.data.id}/board`);
       }
     },
   });
@@ -131,7 +135,7 @@ function WorkspaceCard({ workspace }) {
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold text-charcoal">{workspace.name}</h3>
         <button
-          onClick={() => (window.location.href = `/workspaces/${workspace.id}`)}
+          onClick={() => navigate(`/workspaces/${workspace.id}`)}
           className="text-sm font-medium text-ocean hover:text-ocean/80"
         >
           Open →
@@ -147,7 +151,7 @@ function WorkspaceCard({ workspace }) {
               <span className="text-sm font-medium text-charcoal">{project.name}</span>
             </div>
             <button
-              onClick={() => project.id && (window.location.href = `/projects/${project.id}/board`)}
+              onClick={() => project.id && navigate(`/projects/${project.id}/board`)}
               className="text-sm font-medium text-ocean hover:text-ocean/80"
             >
               Open

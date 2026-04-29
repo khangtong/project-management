@@ -71,6 +71,7 @@ export default function BoardPage() {
     mutationFn: (data) => taskApi.column.create(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries(["board", projectId]);
+      queryClient.invalidateQueries(["board-tasks", boardId]);
       setShowAddColumn(false);
       setNewColumnName("");
     },
@@ -183,6 +184,16 @@ export default function BoardPage() {
           </button>
 
           <button
+            onClick={() => setShowAddColumn((v) => !v)}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-ocean text-ocean hover:bg-ocean/10 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Column
+          </button>
+
+          <button
             onClick={() => setShowAddTaskDrawer(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-ocean hover:bg-ocean/90 transition-colors"
           >
@@ -264,6 +275,7 @@ export default function BoardPage() {
         <TaskDrawer
           task={selectedTask}
           projectId={projectId}
+          workspaceId={workspaceId}
           onClose={() => setSelectedTask(null)}
         />
       )}
@@ -272,6 +284,7 @@ export default function BoardPage() {
         <TaskDrawer
           task={{ title: "", priority: "medium", description: "" }}
           projectId={projectId}
+          workspaceId={workspaceId}
           isCreateMode={true}
           onClose={() => setShowAddTaskDrawer(false)}
           onSave={handleAddTask}

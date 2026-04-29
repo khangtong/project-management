@@ -5,8 +5,10 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('auth')->group(function () {
     Route::post('register', [\App\Http\Controllers\Api\AuthController::class, 'register']);
     Route::post('login', [\App\Http\Controllers\Api\AuthController::class, 'login']);
-    Route::get('invitations/{token}/accept', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'showInvitation']);
 });
+
+// Public invitation preview (no auth required)
+Route::get('invitations/{token}/accept', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'showInvitation']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('search', \App\Http\Controllers\Api\SearchController::class);
@@ -14,6 +16,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('auth/me',      [\App\Http\Controllers\Api\AuthController::class, 'me']);
     Route::post('invitations/{token}/accept', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'acceptInvitation']);
 
+    Route::get('users/search', [\App\Http\Controllers\Api\UserController::class, 'search']);
     Route::apiResource('workspaces', \App\Http\Controllers\Api\WorkspaceController::class);
     
     Route::prefix('workspaces/{workspace}')->group(function () {
@@ -52,8 +55,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('notifications')->group(function () {
         Route::get('/',             [\App\Http\Controllers\Api\NotificationController::class, 'index']);
         Route::get('unread-count',  [\App\Http\Controllers\Api\NotificationController::class, 'unreadCount']);
-        Route::patch('{id}/read',   [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
         Route::patch('read-all',     [\App\Http\Controllers\Api\NotificationController::class, 'markAllAsRead']);
+        Route::patch('{id}/read',   [\App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
         Route::delete('{id}',       [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
     });
 });
