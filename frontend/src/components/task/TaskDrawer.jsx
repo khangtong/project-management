@@ -1,12 +1,23 @@
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import toast from "react-hot-toast";
 import TaskDescription from "./TaskDescription";
 import TaskComments from "./TaskComments";
 import { taskApi } from "../../api/tasks";
 import { attachmentApi } from "../../api/attachments";
 import { workspaceApi } from "../../api/workspaces";
+
+function formatDateForInput(dateValue) {
+  if (!dateValue) return "";
+  try {
+    const d = new Date(dateValue);
+    if (isNaN(d.getTime())) return "";
+    return format(d, "yyyy-MM-dd");
+  } catch {
+    return "";
+  }
+}
 
 const PRIORITY_OPTIONS = [
   {
@@ -39,6 +50,17 @@ const PRIORITY_OPTIONS = [
   },
 ];
 
+/** Strip HTML tags and return plain text — used to detect empty Tiptap output */
+function stripHtml(html) {
+  return html?.replace(/<[^>]*>/g, "").trim() ?? "";
+}
+
+/** Normalise description before saving: treat empty Tiptap output as null */
+function cleanDescription(html) {
+  if (!html || !stripHtml(html)) return null;
+  return html;
+}
+
 export default function TaskDrawer({
   task,
   projectId,
@@ -49,19 +71,47 @@ export default function TaskDrawer({
 }) {
   const queryClient = useQueryClient();
   const [editedTask, setEditedTask] = useState(task);
-  const [activeTab, setActiveTab] = useState("details"); // 'details' | 'comments' | 'activity'
+  const [activeTab, setActiveTab] = useState("details");
+  const [pendingAssignees, setPendingAssignees] = useState(() =>
+    isCreateMode ? [] : task.assignees || [],
+  );
+  const [pendingAttachments, setPendingAttachments] = useState([]);
 
   const { data: fullTask } = useQuery({
     queryKey: ["task", task.id],
     queryFn: () => taskApi.get(task.id).then((r) => r.data),
     initialData: task,
+    enabled: !isCreateMode,
   });
 
   const updateMutation = useMutation({
-    mutationFn: (data) => taskApi.update(task.id, data),
+    mutationFn: async (data) => {
+      await taskApi.update(task.id, data);
+      const currentAssigneeIds = (fullTask?.assignees || []).map((a) => a.id);
+      const pendingIds = pendingAssignees.map((a) => a.id);
+      const toAdd = pendingIds.filter((id) => !currentAssigneeIds.includes(id));
+      const toRemove = currentAssigneeIds.filter(
+        (id) => !pendingIds.includes(id),
+      );
+      for (const userId of toAdd) {
+        await taskApi.assign(task.id, userId);
+      }
+      for (const userId of toRemove) {
+        await taskApi.unassign(task.id, userId);
+      }
+      for (const file of pendingAttachments) {
+        await attachmentApi.create(task.id, file);
+      }
+    },
     onSuccess: () => {
+      setPendingAttachments([]);
       queryClient.invalidateQueries(["task", task.id]);
       queryClient.invalidateQueries(["board-tasks"]);
+      toast.success("Task saved");
+    },
+    onError: (err) => {
+      console.error("Save error:", err.response?.data || err.message);
+      toast.error(err.response?.data?.message || "Failed to save task");
     },
   });
 
@@ -74,10 +124,14 @@ export default function TaskDrawer({
   }, [onClose]);
 
   const handleSave = () => {
+    const payload = {
+      ...editedTask,
+      description: cleanDescription(editedTask.description),
+    };
     if (isCreateMode) {
-      onSave?.(editedTask);
+      onSave?.(payload, pendingAssignees, pendingAttachments);
     } else {
-      updateMutation.mutate(editedTask);
+      updateMutation.mutate(payload);
     }
   };
 
@@ -92,6 +146,7 @@ export default function TaskDrawer({
           boxShadow: "-4px 0 20px rgba(0,0,0,0.1)",
         }}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-cream-border">
           <h2 className="text-lg font-semibold text-charcoal">
             {isCreateMode ? "Create Task" : "Task Details"}
@@ -116,6 +171,7 @@ export default function TaskDrawer({
           </button>
         </div>
 
+        {/* Tabs (edit mode only) */}
         {!isCreateMode && (
           <div className="flex border-b border-cream-border gap-1 px-6 pt-2 pb-0 bg-white">
             {["details", "comments", "activity"].map((tab) => (
@@ -135,19 +191,22 @@ export default function TaskDrawer({
         )}
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Details tab (always shown in create mode, tab-controlled otherwise) */}
+          {/* ── Details ── */}
           {(isCreateMode || activeTab === "details") && (
             <>
+              {/* Title */}
               <input
                 type="text"
-                value={editedTask.title || fullTask?.title || ""}
+                value={editedTask.title || ""}
                 onChange={(e) =>
                   setEditedTask({ ...editedTask, title: e.target.value })
                 }
                 placeholder="Task title"
                 className="w-full text-xl font-semibold bg-transparent border-none outline-none text-charcoal placeholder-gray-medium"
+                autoFocus={isCreateMode}
               />
 
+              {/* Priority + Due Date */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
@@ -178,7 +237,11 @@ export default function TaskDrawer({
                   </label>
                   <input
                     type="date"
-                    value={editedTask.due_date || fullTask?.due_date || ""}
+                    value={
+                      formatDateForInput(editedTask.due_date) ||
+                      formatDateForInput(fullTask?.due_date) ||
+                      ""
+                    }
                     onChange={(e) =>
                       setEditedTask({ ...editedTask, due_date: e.target.value })
                     }
@@ -187,19 +250,19 @@ export default function TaskDrawer({
                 </div>
               </div>
 
+              {/* Assignees — works in both create and edit mode */}
               <div>
                 <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
                   Assignees
                 </label>
-                {!isCreateMode && (
-                  <AssigneesPanel
-                    taskId={task.id}
-                    task={fullTask}
-                    workspaceId={workspaceId}
-                  />
-                )}
+                <CreateModeAssignees
+                  workspaceId={workspaceId}
+                  selected={pendingAssignees}
+                  onChange={setPendingAssignees}
+                />
               </div>
 
+              {/* Description */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-charcoal">
                   Description
@@ -219,17 +282,18 @@ export default function TaskDrawer({
                 </div>
               </div>
 
-              {!isCreateMode && (
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-charcoal">
-                    Attachments
-                  </label>
-                  <AttachmentsPanel
-                    taskId={task.id}
-                    attachments={fullTask?.attachments || []}
-                  />
-                </div>
-              )}
+              {/* Attachments */}
+              <div>
+                <label className="block text-sm font-medium mb-2 text-charcoal">
+                  Attachments
+                </label>
+                <AttachmentsPanel
+                  taskId={task.id}
+                  attachments={fullTask?.attachments || []}
+                  pendingAttachments={pendingAttachments}
+                  onPendingChange={setPendingAttachments}
+                />
+              </div>
             </>
           )}
 
@@ -245,6 +309,7 @@ export default function TaskDrawer({
           )}
         </div>
 
+        {/* Footer */}
         <div className="p-6 border-t border-cream-border">
           <button
             onClick={handleSave}
@@ -267,27 +332,311 @@ export default function TaskDrawer({
   );
 }
 
-function AttachmentsPanel({ taskId, attachments = [] }) {
-  const queryClient = useQueryClient();
+// ── Create-mode assignee picker (no task ID yet, so no API calls) ─────────────
+function CreateModeAssignees({ workspaceId, selected, onChange }) {
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
 
-  const uploadMutation = useMutation({
-    mutationFn: (file) => attachmentApi.create(taskId, file),
-    onSuccess: () => queryClient.invalidateQueries(["task", taskId]),
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
+        setShowDropdown(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const { data: members = [] } = useQuery({
+    queryKey: ["workspace-members", workspaceId],
+    queryFn: () =>
+      workspaceId
+        ? workspaceApi.members.list(workspaceId).then((r) => r.data)
+        : Promise.resolve([]),
+    enabled: !!workspaceId,
   });
+
+  const selectedIds = selected.map((u) => u.id);
+  const available = members.filter((m) => !selectedIds.includes(m.user_id));
+
+  const add = (member) => {
+    onChange([
+      ...selected,
+      {
+        id: member.user_id,
+        name: member.user?.name,
+        email: member.user?.email,
+      },
+    ]);
+    setShowDropdown(false);
+  };
+  const remove = (userId) => onChange(selected.filter((u) => u.id !== userId));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {selected.length === 0 && (
+          <span className="text-sm text-gray-medium">No assignees</span>
+        )}
+        {selected.map((u) => (
+          <span
+            key={u.id}
+            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-full bg-mint-light border border-cream-dark text-charcoal"
+          >
+            <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
+              {u.name?.[0]?.toUpperCase()}
+            </div>
+            {u.name}
+            <button
+              onClick={() => remove(u.id)}
+              className="text-gray-medium hover:text-red-500"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setShowDropdown((v) => !v)}
+          className="text-xs px-3 py-1.5 rounded-lg border border-mint text-mint"
+        >
+          + Add Assignee
+        </button>
+        {showDropdown && (
+          <div
+            ref={dropdownRef}
+            className="absolute z-10 mt-1 w-48 bg-white border border-cream-border rounded-lg shadow-lg max-h-40 overflow-y-auto"
+          >
+            {available.length === 0 ? (
+              <p className="p-3 text-sm text-gray-medium">No more members</p>
+            ) : (
+              available.map((m) => (
+                <button
+                  key={m.user_id}
+                  type="button"
+                  onClick={() => add(m)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-mint text-left"
+                >
+                  <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
+                    {m.user?.name?.[0]?.toUpperCase() || "?"}
+                  </div>
+                  {m.user?.name || "Unknown"}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Edit-mode assignees (with live API calls) ────────────────────────────────
+function AssigneesPanel({ taskId, task, workspaceId }) {
+  const queryClient = useQueryClient();
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
+        setShowDropdown(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const { data: members = [] } = useQuery({
+    queryKey: ["workspace-members", workspaceId],
+    queryFn: () =>
+      workspaceId
+        ? workspaceApi.members.list(workspaceId).then((r) => r.data)
+        : Promise.resolve([]),
+    enabled: !!workspaceId,
+  });
+
+  const assignMutation = useMutation({
+    mutationFn: (userId) => taskApi.assign(taskId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["task", taskId]);
+      queryClient.invalidateQueries(["board-tasks"]);
+      setShowDropdown(false);
+      toast.success("Assignee added");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to assign"),
+  });
+
+  const unassignMutation = useMutation({
+    mutationFn: (userId) => taskApi.unassign(taskId, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["task", taskId]);
+      queryClient.invalidateQueries(["board-tasks"]);
+      toast.success("Assignee removed");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to remove"),
+  });
+
+  const assignees = task?.assignees || [];
+  const assignedIds = assignees.map((a) => a.id);
+  const available = members.filter((m) => !assignedIds.includes(m.user_id));
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {assignees.length === 0 && (
+          <span className="text-sm text-gray-medium">No assignees</span>
+        )}
+        {assignees.map((a) => (
+          <span
+            key={a.id}
+            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-full bg-mint-light border border-cream-dark text-charcoal"
+          >
+            <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
+              {a.name?.[0]?.toUpperCase()}
+            </div>
+            {a.name}
+            <button
+              onClick={() => unassignMutation.mutate(a.id)}
+              disabled={unassignMutation.isPending}
+              className="text-gray-medium hover:text-red-500 disabled:opacity-50"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="relative">
+        <button
+          onClick={() => setShowDropdown((v) => !v)}
+          className="text-xs px-3 py-1.5 rounded-lg border border-mint text-mint"
+        >
+          + Add Assignee
+        </button>
+        {showDropdown && (
+          <div
+            ref={dropdownRef}
+            className="absolute z-10 mt-1 w-48 bg-white border border-cream-border rounded-lg shadow-lg max-h-40 overflow-y-auto"
+          >
+            {available.length === 0 ? (
+              <p className="p-3 text-sm text-gray-medium">
+                No more members to add
+              </p>
+            ) : (
+              available.map((m) => (
+                <button
+                  key={m.user_id}
+                  onClick={() => assignMutation.mutate(m.user_id)}
+                  disabled={assignMutation.isPending}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-mint text-left disabled:opacity-50"
+                >
+                  <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
+                    {m.user?.name?.[0]?.toUpperCase() || "?"}
+                  </div>
+                  {m.user?.name || "Unknown"}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+function AttachmentsPanel({
+  taskId,
+  attachments = [],
+  pendingAttachments = [],
+  onPendingChange,
+}) {
+  const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
     mutationFn: (id) => attachmentApi.delete(id),
-    onSuccess: () => queryClient.invalidateQueries(["task", taskId]),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["task", taskId]);
+      toast.success("File removed");
+    },
+    onError: (err) => {
+      console.error("Delete error:", err.response?.data || err.message);
+      toast.error(err.response?.data?.message || "Failed to delete file");
+    },
   });
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) uploadMutation.mutate(file);
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      onPendingChange([...pendingAttachments, ...files]);
+    }
     e.target.value = "";
+  };
+
+  const removePending = (index) => {
+    onPendingChange(pendingAttachments.filter((_, i) => i !== index));
   };
 
   return (
     <div className="space-y-3">
+      {pendingAttachments.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {pendingAttachments.map((file, index) => (
+            <div
+              key={`pending-${index}`}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-ocean/10 border border-ocean/20"
+            >
+              <svg
+                className="w-4 h-4 text-ocean"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                />
+              </svg>
+              <span className="text-sm text-charcoal">{file.name}</span>
+              <span className="text-xs text-ocean">(pending)</span>
+              <button
+                onClick={() => removePending(index)}
+                className="text-xs text-gray-medium hover:text-red-500"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {attachments.map((att) => (
@@ -326,7 +675,7 @@ function AttachmentsPanel({ taskId, attachments = [] }) {
           ))}
         </div>
       )}
-      <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-mint text-mint cursor-pointer hover:bg-mint-light">
+      <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-mint text-mint cursor-pointer">
         <svg
           className="w-4 h-4"
           fill="none"
@@ -344,14 +693,16 @@ function AttachmentsPanel({ taskId, attachments = [] }) {
         <input
           type="file"
           className="hidden"
-          onChange={handleFileChange}
+          onChange={handleFileSelect}
           accept="*/*"
+          multiple
         />
       </label>
     </div>
   );
 }
 
+// ── Activity Log ──────────────────────────────────────────────────────────────
 function ActivityLog({ taskId }) {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["task-activity", taskId],
@@ -375,7 +726,6 @@ function ActivityLog({ taskId }) {
         Loading activity...
       </div>
     );
-
   if (logs.length === 0)
     return (
       <div className="py-8 text-center text-sm text-gray-medium">
@@ -411,171 +761,6 @@ function ActivityLog({ taskId }) {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function AssigneesPanel({ taskId, task, workspaceId }) {
-  const queryClient = useQueryClient();
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  const { data: members = [] } = useQuery({
-    queryKey: ["workspace-members", workspaceId],
-    queryFn: () =>
-      workspaceId
-        ? workspaceApi.members.list(workspaceId).then((r) => r.data)
-        : Promise.resolve([]),
-    enabled: !!workspaceId,
-  });
-
-  const assignMutation = useMutation({
-    mutationFn: (userId) => taskApi.assign(taskId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["task", taskId]);
-      queryClient.invalidateQueries(["board-tasks"]);
-      setShowDropdown(false);
-      toast.success("Assignee added successfully");
-    },
-    onError: (err) => {
-      console.error(
-        "Failed to assign user:",
-        err.response?.data || err.message,
-      );
-      toast.error(err.response?.data?.message || "Failed to assign user");
-    },
-  });
-
-  const unassignMutation = useMutation({
-    mutationFn: (userId) => taskApi.unassign(taskId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["task", taskId]);
-      queryClient.invalidateQueries(["board-tasks"]);
-      toast.success("Assignee removed");
-    },
-    onError: (err) => {
-      console.error(
-        "Failed to unassign user:",
-        err.response?.data || err.message,
-      );
-      toast.error(err.response?.data?.message || "Failed to remove assignee");
-    },
-  });
-
-  const assignees = task?.assignees || [];
-  const assignedIds = assignees.map((a) => a.id);
-  const availableMembers = members.filter(
-    (m) => !assignedIds.includes(m.user_id),
-  );
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {assignees.length > 0 ? (
-          assignees.map((a) => (
-            <span
-              key={a.id}
-              className="border border-cream-dark flex items-center gap-2 text-sm px-3 py-1.5 rounded-full bg-mint-light text-charcoal"
-            >
-              <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs text-white bg-mint">
-                {a.name?.[0]?.toUpperCase()}
-              </div>
-              {a.name}
-              <button
-                onClick={() => unassignMutation.mutate(a.id)}
-                disabled={unassignMutation.isPending}
-                className="text-gray-medium hover:text-red-500 disabled:opacity-50"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </span>
-          ))
-        ) : (
-          <span className="text-sm text-gray-medium">No assignees</span>
-        )}
-      </div>
-
-      <div className="relative">
-        <button
-          onClick={() => setShowDropdown(!showDropdown)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-mint text-mint hover:bg-mint-light"
-        >
-          + Add Assignee
-        </button>
-
-        {showDropdown && availableMembers.length > 0 && (
-          <div
-            ref={dropdownRef}
-            className="absolute z-10 mt-1 w-48 bg-white border border-cream-border rounded-lg shadow-lg max-h-40 overflow-y-auto"
-          >
-            {availableMembers.map((member) => (
-              <button
-                key={member.user_id}
-                onClick={() => assignMutation.mutate(member.user_id)}
-                disabled={assignMutation.isPending}
-                className="w-full text-left px-3 py-2 text-sm hover:bg-mint flex items-center gap-2 disabled:opacity-50"
-              >
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs text-white bg-mint">
-                  {member.user?.name?.[0]?.toUpperCase() || "?"}
-                </div>
-                {member.user?.name || "Unknown"}
-                {assignMutation.isPending && (
-                  <svg
-                    className="w-3 h-3 animate-spin ml-auto"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    ></circle>
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {showDropdown && availableMembers.length === 0 && (
-          <div
-            ref={dropdownRef}
-            className="absolute z-10 mt-1 w-48 bg-white border border-cream-border rounded-lg shadow-lg p-2 text-sm text-gray-medium"
-          >
-            No more members to add
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -11,13 +11,19 @@ export default function Sidebar({ onClose }) {
 
   const { data: currentWorkspace } = useQuery({
     queryKey: ["workspace", workspaceId],
-    queryFn: () => workspaceId ? workspaceApi.show(workspaceId).then((r) => r.data) : Promise.resolve(null),
+    queryFn: () =>
+      workspaceId
+        ? workspaceApi.show(workspaceId).then((r) => r.data)
+        : Promise.resolve(null),
     enabled: !!workspaceId,
   });
 
   const { data: projects = [] } = useQuery({
     queryKey: ["workspace-projects", workspaceId],
-    queryFn: () => workspaceId ? projectApi.list(workspaceId).then((r) => r.data) : Promise.resolve([]),
+    queryFn: () =>
+      workspaceId
+        ? projectApi.list(workspaceId).then((r) => r.data)
+        : Promise.resolve([]),
     enabled: !!workspaceId,
   });
 
@@ -141,7 +147,7 @@ export default function Sidebar({ onClose }) {
                   d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
                 />
               </svg>
-              All Workspaces
+              Workspaces
             </Link>
 
             <Link

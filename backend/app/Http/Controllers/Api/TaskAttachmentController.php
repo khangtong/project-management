@@ -34,10 +34,15 @@ class TaskAttachmentController extends Controller
 
         $publicUrl = config('services.supabase.url') . '/storage/v1/object/public/' . config('services.supabase.bucket') . '/' . $filePath;
 
+        $originalName = iconv('UTF-8', 'UTF-8//IGNORE', $file->getClientOriginalName());
+        if ($originalName === false) {
+            $originalName = 'uploaded_file';
+        }
+
         $attachment = TaskAttachment::create([
             'task_id' => $task->id,
             'uploaded_by' => $request->user()->id,
-            'file_name' => $file->getClientOriginalName(),
+            'file_name' => $originalName,
             'file_url' => $publicUrl,
             'file_size' => $file->getSize(),
             'mime_type' => $file->getMimeType(),
@@ -48,7 +53,7 @@ class TaskAttachmentController extends Controller
             'entity_type' => Task::class,
             'entity_id' => $task->id,
             'action' => ActivityLog::ACTION_ATTACHMENT_ADD,
-            'metadata' => ['file_name' => $file->getClientOriginalName()],
+            'metadata' => ['file_name' => $originalName],
         ]);
 
         return response()->json($attachment, 201);

@@ -107,6 +107,9 @@ class ProjectController extends Controller
 
     private function authorizeProjectOwner(Project $project)
     {
-        abort_unless($project->workspace->owner_id === auth()->id(), 403, 'Owner access required.');
+        $workspace = $project->workspace;
+        $userId = auth()->id();
+        $member = $workspace->workspaceMemberships()->where('user_id', $userId)->first();
+        abort_unless($member && $member->isAdmin(), 403, 'Admin access required.');
     }
 }

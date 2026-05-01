@@ -14,6 +14,7 @@ import TaskDrawer from "../components/task/TaskDrawer";
 import { taskApi } from "../api/tasks";
 import { boardApi } from "../api/boards";
 import { workspaceApi } from "../api/workspaces";
+import { attachmentApi } from "../api/attachments";
 import { supabase } from "../lib/supabase";
 
 export default function BoardPage() {
@@ -39,8 +40,17 @@ export default function BoardPage() {
   const columns = board?.columns || [];
   const firstColumnId = columns[0]?.id;
 
-  const handleAddTask = (taskData) => {
-    taskApi.create(firstColumnId, taskData).then(() => {
+  const handleAddTask = (taskData, pendingAssignees = [], pendingAttachments = []) => {
+    taskApi.create(firstColumnId, taskData).then(async (res) => {
+      const newTask = res.data;
+      // Assign any members selected during creation
+      if (pendingAssignees.length > 0) {
+        await Promise.all(pendingAssignees.map((u) => taskApi.assign(newTask.id, u.id)));
+      }
+      // Upload any pending attachments
+      if (pendingAttachments.length > 0) {
+        await Promise.all(pendingAttachments.map((file) => attachmentApi.create(newTask.id, file)));
+      }
       queryClient.invalidateQueries(["board-tasks", boardId]);
       setShowAddTaskDrawer(false);
     });

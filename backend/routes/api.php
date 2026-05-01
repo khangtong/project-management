@@ -25,8 +25,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('invite-by-email', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'inviteByEmail']);
         Route::patch('members/{member}/role', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'updateRole']);
         Route::delete('members/{member}', [\App\Http\Controllers\Api\WorkspaceMemberController::class, 'remove']);
-        Route::apiResource('projects', \App\Http\Controllers\Api\ProjectController::class)->shallow();
+        Route::get('projects', [\App\Http\Controllers\Api\ProjectController::class, 'index']);
+        Route::post('projects', [\App\Http\Controllers\Api\ProjectController::class, 'store']);
     });
+
+    // Standalone project routes (no workspace prefix needed)
+    Route::get('projects/{project}',    [\App\Http\Controllers\Api\ProjectController::class, 'show']);
+    Route::patch('projects/{project}',  [\App\Http\Controllers\Api\ProjectController::class, 'update']);
+    Route::delete('projects/{project}', [\App\Http\Controllers\Api\ProjectController::class, 'destroy']);
 
     Route::get('projects/{project}/board', [\App\Http\Controllers\Api\BoardController::class, 'show']);
     Route::post('projects/{project}/board/columns', [\App\Http\Controllers\Api\BoardColumnController::class, 'store']);

@@ -23,14 +23,44 @@ createRoot(document.getElementById('root')).render(
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <App />
-          <Toaster 
+          <Toaster
             position="top-right"
             toastOptions={{
               duration: 4000,
-              style: {
-                background: '#2C2C2C',
-                color: '#F6E3C5',
-                borderRadius: '8px',
+              success: {
+                style: {
+                  background: '#fff',
+                  color: '#2C2C2C',
+                  borderRadius: '12px',
+                  border: '1px solid #A0D995',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                  fontSize: '14px',
+                  padding: '12px 16px',
+                },
+                iconTheme: { primary: '#A0D995', secondary: '#fff' },
+              },
+              error: {
+                style: {
+                  background: '#fff',
+                  color: '#2C2C2C',
+                  borderRadius: '12px',
+                  border: '1px solid #FCA5A5',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                  fontSize: '14px',
+                  padding: '12px 16px',
+                },
+                iconTheme: { primary: '#EF4444', secondary: '#fff' },
+              },
+              loading: {
+                style: {
+                  background: '#fff',
+                  color: '#2C2C2C',
+                  borderRadius: '12px',
+                  border: '1px solid #E8D5B0',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                  fontSize: '14px',
+                  padding: '12px 16px',
+                },
               },
             }}
           />
