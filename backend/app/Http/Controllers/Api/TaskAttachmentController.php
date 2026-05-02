@@ -19,15 +19,20 @@ class TaskAttachmentController extends Controller
         $request->validate(['file' => 'required|file|max:20480']);
 
         $file = $request->file('file');
-        $fileName = Str::uuid() . '.' . $file->getClientOriginalExtension();
-        $filePath = "attachments/{$task->id}/{$fileName}";
+        $fileName = Str::uuid() . ($file->getClientOriginalExtension() ? '.' . $file->getClientOriginalExtension() : '');
+        $filePath = "{$task->id}/{$fileName}"; // path inside the bucket — no bucket name prefix
 
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . config('services.supabase.service_key'),
-            'Content-Type' => $file->getMimeType(),
-        ])->put(
-            config('services.supabase.url') . '/storage/v1/object/' . config('services.supabase.bucket') . '/' . $filePath,
-            file_get_contents($file->getRealPath())
+        ])->withOptions([
+            'verify' => app()->isProduction()
+                ? true
+                : false, // skip SSL verify in local dev only
+        ])->withBody(
+            file_get_contents($file->getRealPath()),
+            $file->getMimeType()
+        )->put(
+            config('services.supabase.url') . '/storage/v1/object/' . config('services.supabase.bucket') . '/' . $filePath
         );
 
         abort_if(!$response->successful(), 500, 'File upload failed.');

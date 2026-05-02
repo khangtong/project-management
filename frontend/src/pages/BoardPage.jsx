@@ -1,21 +1,24 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import toast from "react-hot-toast";
 import {
   DndContext,
-  closestCorners,
+  DragOverlay,
+  rectIntersection,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
 import KanbanColumn from "../components/board/KanbanColumn";
+import TaskCard from "../components/board/TaskCard";
 import TaskDrawer from "../components/task/TaskDrawer";
 import { taskApi } from "../api/tasks";
 import { boardApi } from "../api/boards";
 import { workspaceApi } from "../api/workspaces";
 import { attachmentApi } from "../api/attachments";
-import { supabase } from "../lib/supabase";
+import { useAuth } from "../store/AuthContext";
 
 export default function BoardPage() {
   const { projectId } = useParams();
@@ -24,6 +27,7 @@ export default function BoardPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
   const [selectedTask, setSelectedTask] = useState(null);
+  const [activeTask, setActiveTask] = useState(null); // task being dragged (for DragOverlay)
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
   const [showAddTaskDrawer, setShowAddTaskDrawer] = useState(false);
@@ -39,30 +43,39 @@ export default function BoardPage() {
   const boardId = board?.id;
   const columns = board?.columns || [];
   const firstColumnId = columns[0]?.id;
+  const [selectedColumnId, setSelectedColumnId] = useState(null);
+  const targetColumnId = selectedColumnId || firstColumnId;
 
   const handleAddTask = (taskData, pendingAssignees = [], pendingAttachments = []) => {
-    taskApi.create(firstColumnId, taskData).then(async (res) => {
+    const toastId = toast.loading("Creating task…");
+    taskApi.create(targetColumnId, taskData).then(async (res) => {
       const newTask = res.data;
-      // Assign any members selected during creation
       if (pendingAssignees.length > 0) {
         await Promise.all(pendingAssignees.map((u) => taskApi.assign(newTask.id, u.id)));
       }
-      // Upload any pending attachments
       if (pendingAttachments.length > 0) {
         await Promise.all(pendingAttachments.map((file) => attachmentApi.create(newTask.id, file)));
       }
       queryClient.invalidateQueries(["board-tasks", boardId]);
       setShowAddTaskDrawer(false);
+      toast.success("Task created", { id: toastId });
+    }).catch((err) => {
+      toast.error(err.response?.data?.message || "Failed to create task", { id: toastId });
     });
   };
 
   const workspaceId = board?.project?.workspace_id;
+  const { user } = useAuth();
 
   const { data: members = [] } = useQuery({
     queryKey: ["workspace-members", workspaceId],
     queryFn: () => workspaceId ? workspaceApi.members.list(workspaceId).then((r) => r.data) : Promise.resolve([]),
     enabled: !!workspaceId,
   });
+
+  const currentUserMember = members.find((m) => m.user_id === user?.id);
+  const currentUserRole = currentUserMember?.role ?? "member";
+  const isAdmin = currentUserRole === "owner" || currentUserRole === "admin";
 
   const { data: tasksByColumn = {}, isLoading: tasksLoading } = useQuery({
     queryKey: ["board-tasks", boardId],
@@ -74,7 +87,12 @@ export default function BoardPage() {
   const moveMutation = useMutation({
     mutationFn: ({ taskId, columnId, position }) =>
       taskApi.move(taskId, { column_id: columnId, position }),
-    onSuccess: () => queryClient.invalidateQueries(["board-tasks", boardId]),
+    onMutate: () => toast.loading("Moving task…", { id: "move" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["board-tasks", boardId]);
+      toast.success("Task moved", { id: "move" });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "Failed to move task", { id: "move" }),
   });
 
   const addColumnMutation = useMutation({
@@ -84,48 +102,51 @@ export default function BoardPage() {
       queryClient.invalidateQueries(["board-tasks", boardId]);
       setShowAddColumn(false);
       setNewColumnName("");
+      toast.success("Column added");
     },
+    onError: (err) => toast.error(err.response?.data?.message || "Failed to add column"),
   });
 
-  useEffect(() => {
-    if (!boardId) return;
-
-    const channel = supabase
-      .channel(`board:${boardId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => {
-          queryClient.invalidateQueries(["board-tasks", boardId]);
-        },
-      )
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [boardId, queryClient]);
+  const handleDragStart = (event) => {
+    const { active } = event;
+    if (active.data.current?.type === "task") {
+      setActiveTask(active.data.current.task);
+    }
+  };
 
   const handleDragEnd = (event) => {
+    setActiveTask(null);
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over) return;
 
     const activeData = active.data.current;
-    const overData = over.data.current;
 
     if (activeData?.type === "task") {
-      const targetColumnId = overData?.columnId || over.id;
-      moveMutation.mutate({
-        taskId: active.id,
-        columnId: targetColumnId,
-        position: overData?.position ?? 0,
-      });
+      // Determine the target column: over could be a column droppable or a task
+      const overData = over.data.current;
+      const targetColumnId = overData?.type === "task"
+        ? overData.task.column_id          // dropped onto another task
+        : over.id;                          // dropped onto a column droppable
+
+      if (!targetColumnId) return;
+
+      // Determine position: if dropped onto a task, slot above it; else append
+      const targetTasks = tasksByColumn[targetColumnId] || [];
+      let position = targetTasks.length; // default: end of column
+      if (overData?.type === "task" && overData.task.id !== active.id) {
+        const overIndex = targetTasks.findIndex((t) => t.id === over.id);
+        if (overIndex !== -1) position = overIndex;
+      }
+
+      moveMutation.mutate({ taskId: active.id, columnId: targetColumnId, position });
     } else {
-      const oldIndex = columns.findIndex((c) => c.id === over.id);
-      const newIndex = columns.findIndex((c) => c.id === active.id);
+      // Column reorder
+      if (active.id === over.id) return;
+      const oldIndex = columns.findIndex((c) => c.id === active.id);
+      const newIndex = columns.findIndex((c) => c.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         const reordered = arrayMove(columns, oldIndex, newIndex);
-        taskApi.column.reorder(
-          reordered.map((c, i) => ({ id: c.id, position: i })),
-        );
+        taskApi.column.reorder(reordered.map((c, i) => ({ id: c.id, position: i })));
         queryClient.invalidateQueries(["board", projectId]);
       }
     }
@@ -193,15 +214,17 @@ export default function BoardPage() {
             Filter
           </button>
 
-          <button
-            onClick={() => setShowAddColumn((v) => !v)}
-            className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-ocean text-ocean hover:bg-ocean/10 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Column
-          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddColumn((v) => !v)}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-ocean text-ocean hover:bg-ocean/10 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Column
+            </button>
+          )}
 
           <button
             onClick={() => setShowAddTaskDrawer(true)}
@@ -264,7 +287,8 @@ export default function BoardPage() {
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCorners}
+        collisionDetection={rectIntersection}
+        onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
         <div className="flex-1 overflow-x-auto">
@@ -275,10 +299,18 @@ export default function BoardPage() {
                 column={column}
                 tasks={tasksByColumn[column.id] || []}
                 onTaskClick={handleTaskClick}
+                isAdmin={isAdmin}
               />
             ))}
           </div>
         </div>
+        <DragOverlay dropAnimation={null}>
+          {activeTask ? (
+            <div className="rotate-1 scale-105 opacity-90 shadow-xl">
+              <TaskCard task={activeTask} onClick={() => {}} />
+            </div>
+          ) : null}
+        </DragOverlay>
       </DndContext>
 
       {selectedTask && (
@@ -296,7 +328,10 @@ export default function BoardPage() {
           projectId={projectId}
           workspaceId={workspaceId}
           isCreateMode={true}
-          onClose={() => setShowAddTaskDrawer(false)}
+          columns={columns}
+          selectedColumnId={selectedColumnId}
+          onColumnChange={setSelectedColumnId}
+          onClose={() => { setShowAddTaskDrawer(false); setSelectedColumnId(null); }}
           onSave={handleAddTask}
         />
       )}

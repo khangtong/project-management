@@ -37,9 +37,9 @@ const PRIORITY_OPTIONS = [
   {
     value: "high",
     label: "High",
-    bg: "bg-ocean/20",
-    color: "text-ocean",
-    border: "border-ocean",
+    bg: "bg-orange-100",
+    color: "text-orange-700",
+    border: "border-orange-200",
   },
   {
     value: "urgent",
@@ -50,22 +50,24 @@ const PRIORITY_OPTIONS = [
   },
 ];
 
-/** Strip HTML tags and return plain text — used to detect empty Tiptap output */
 function stripHtml(html) {
   return html?.replace(/<[^>]*>/g, "").trim() ?? "";
 }
 
-/** Normalise description before saving: treat empty Tiptap output as null */
 function cleanDescription(html) {
   if (!html || !stripHtml(html)) return null;
   return html;
 }
 
+// ── Main drawer ───────────────────────────────────────────────────────────────
 export default function TaskDrawer({
   task,
   projectId,
   workspaceId,
   isCreateMode = false,
+  columns = [],
+  selectedColumnId,
+  onColumnChange,
   onClose,
   onSave,
 }) {
@@ -76,29 +78,38 @@ export default function TaskDrawer({
     isCreateMode ? [] : task.assignees || [],
   );
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const syncedRef = useRef(false);
 
-  const { data: fullTask } = useQuery({
+  const { data: fullTask, isLoading: taskLoading } = useQuery({
     queryKey: ["task", task.id],
     queryFn: () => taskApi.get(task.id).then((r) => r.data),
-    initialData: task,
     enabled: !isCreateMode,
+    staleTime: 30_000,
   });
+
+  useEffect(() => {
+    if (!isCreateMode && fullTask && !syncedRef.current) {
+      syncedRef.current = true;
+      setEditedTask((prev) => ({
+        ...prev,
+        due_date: fullTask.due_date ?? "",
+        description: fullTask.description ?? prev.description,
+        priority: fullTask.priority ?? prev.priority,
+        title: fullTask.title ?? prev.title,
+      }));
+      setPendingAssignees(fullTask.assignees || []);
+    }
+  }, [isCreateMode, fullTask]);
 
   const updateMutation = useMutation({
     mutationFn: async (data) => {
       await taskApi.update(task.id, data);
-      const currentAssigneeIds = (fullTask?.assignees || []).map((a) => a.id);
+      const savedIds = (fullTask?.assignees || []).map((a) => a.id);
       const pendingIds = pendingAssignees.map((a) => a.id);
-      const toAdd = pendingIds.filter((id) => !currentAssigneeIds.includes(id));
-      const toRemove = currentAssigneeIds.filter(
-        (id) => !pendingIds.includes(id),
-      );
-      for (const userId of toAdd) {
-        await taskApi.assign(task.id, userId);
-      }
-      for (const userId of toRemove) {
-        await taskApi.unassign(task.id, userId);
-      }
+      const toAdd = pendingIds.filter((id) => !savedIds.includes(id));
+      const toRemove = savedIds.filter((id) => !pendingIds.includes(id));
+      await Promise.all(toAdd.map((id) => taskApi.assign(task.id, id)));
+      await Promise.all(toRemove.map((id) => taskApi.unassign(task.id, id)));
       for (const file of pendingAttachments) {
         await attachmentApi.create(task.id, file);
       }
@@ -109,10 +120,8 @@ export default function TaskDrawer({
       queryClient.invalidateQueries(["board-tasks"]);
       toast.success("Task saved");
     },
-    onError: (err) => {
-      console.error("Save error:", err.response?.data || err.message);
-      toast.error(err.response?.data?.message || "Failed to save task");
-    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to save task"),
   });
 
   useEffect(() => {
@@ -139,21 +148,21 @@ export default function TaskDrawer({
     <>
       <div className="fixed inset-0 z-40 bg-cream/70" onClick={onClose} />
       <aside
-        className="fixed right-0 top-0 h-full z-50 flex flex-col overflow-hidden bg-white rounded-l-2xl shadow-lg"
+        className="fixed right-0 top-0 h-full z-50 flex flex-col overflow-hidden bg-white rounded-l-2xl"
         style={{
           width: "40%",
           maxWidth: "500px",
           boxShadow: "-4px 0 20px rgba(0,0,0,0.1)",
         }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-cream-border">
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-cream-border shrink-0">
           <h2 className="text-lg font-semibold text-charcoal">
             {isCreateMode ? "Create Task" : "Task Details"}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-50 text-gray-medium"
+            className="p-2 rounded-lg hover:bg-red-50 text-gray-medium hover:text-red-500"
           >
             <svg
               className="w-5 h-5"
@@ -171,9 +180,9 @@ export default function TaskDrawer({
           </button>
         </div>
 
-        {/* Tabs (edit mode only) */}
+        {/* ── Tabs (edit mode only) ── */}
         {!isCreateMode && (
-          <div className="flex border-b border-cream-border gap-1 px-6 pt-2 pb-0 bg-white">
+          <div className="flex border-b border-cream-border gap-1 px-6 pt-2 pb-0 bg-white shrink-0">
             {["details", "comments", "activity"].map((tab) => (
               <button
                 key={tab}
@@ -190,127 +199,184 @@ export default function TaskDrawer({
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* ── Details ── */}
-          {(isCreateMode || activeTab === "details") && (
-            <>
-              {/* Title */}
-              <input
-                type="text"
-                value={editedTask.title || ""}
-                onChange={(e) =>
-                  setEditedTask({ ...editedTask, title: e.target.value })
-                }
-                placeholder="Task title"
-                className="w-full text-xl font-semibold bg-transparent border-none outline-none text-charcoal placeholder-gray-medium"
-                autoFocus={isCreateMode}
-              />
-
-              {/* Priority + Due Date */}
+        {/* ── Body ── */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Loading skeleton */}
+          {!isCreateMode && taskLoading ? (
+            <div className="p-6 space-y-5 animate-pulse">
+              <div className="h-7 bg-cream-border rounded-lg w-3/4" />
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
-                    Priority
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {PRIORITY_OPTIONS.map((p) => (
-                      <button
-                        key={p.value}
-                        onClick={() =>
-                          setEditedTask({ ...editedTask, priority: p.value })
+                <div className="h-10 bg-cream-border rounded-lg" />
+                <div className="h-10 bg-cream-border rounded-lg" />
+              </div>
+              <div className="h-4 bg-cream-border rounded w-1/4" />
+              <div className="h-24 bg-cream-border rounded-lg" />
+              <div className="space-y-2">
+                <div className="h-4 bg-cream-border rounded w-1/3" />
+                <div className="h-14 bg-cream-border rounded-xl" />
+                <div className="h-14 bg-cream-border rounded-xl" />
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* ── Details tab ── */}
+              {(isCreateMode || activeTab === "details") && (
+                <div className="p-6 space-y-6">
+                  <input
+                    type="text"
+                    value={editedTask.title || ""}
+                    onChange={(e) =>
+                      setEditedTask({ ...editedTask, title: e.target.value })
+                    }
+                    placeholder="Task title"
+                    className="w-full text-xl font-semibold bg-transparent border-none outline-none text-charcoal placeholder-gray-medium"
+                    autoFocus={isCreateMode}
+                  />
+
+                  {/* Column selector — create mode only */}
+                  {isCreateMode && columns.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
+                        Add to Column
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {columns.map((col) => (
+                          <button
+                            key={col.id}
+                            type="button"
+                            onClick={() => onColumnChange?.(col.id)}
+                            className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-colors ${
+                              (selectedColumnId || columns[0]?.id) === col.id
+                                ? "bg-ocean text-white border-ocean"
+                                : "bg-transparent text-gray-medium border-cream-border hover:border-ocean/40"
+                            }`}
+                          >
+                            {col.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Priority + Due Date */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
+                        Priority
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {PRIORITY_OPTIONS.map((p) => (
+                          <button
+                            key={p.value}
+                            onClick={() =>
+                              setEditedTask({
+                                ...editedTask,
+                                priority: p.value,
+                              })
+                            }
+                            className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-colors ${
+                              (editedTask.priority || fullTask?.priority) ===
+                              p.value
+                                ? `${p.bg} ${p.color} ${p.border}`
+                                : "bg-transparent text-gray-medium border-cream-border"
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
+                        Due Date
+                      </label>
+                      <input
+                        type="date"
+                        value={
+                          formatDateForInput(editedTask.due_date) ||
+                          formatDateForInput(fullTask?.due_date) ||
+                          ""
                         }
-                        className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-colors ${
-                          (editedTask.priority || fullTask?.priority) ===
-                          p.value
-                            ? `${p.bg} ${p.color} ${p.border}`
-                            : "bg-transparent text-gray-medium border-cream-border"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
+                        onChange={(e) =>
+                          setEditedTask({
+                            ...editedTask,
+                            due_date: e.target.value,
+                          })
+                        }
+                        className="px-3 py-1.5 text-sm rounded-lg border border-cream-border text-charcoal"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Assignees */}
+                  <div>
+                    <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
+                      Assignees
+                    </label>
+                    <CreateModeAssignees
+                      workspaceId={workspaceId}
+                      selected={pendingAssignees}
+                      onChange={setPendingAssignees}
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-charcoal">
+                      Description
+                    </label>
+                    <div className="rounded-lg p-4 bg-cream-light border border-cream-border">
+                      <TaskDescription
+                        content={
+                          isCreateMode
+                            ? editedTask.description || ""
+                            : fullTask?.description || ""
+                        }
+                        editable={true}
+                        onUpdate={(html) =>
+                          setEditedTask({ ...editedTask, description: html })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {/* Attachments */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-charcoal">
+                      Attachments
+                    </label>
+                    <AttachmentsPanel
+                      taskId={task.id}
+                      attachments={fullTask?.attachments || []}
+                      pendingAttachments={pendingAttachments}
+                      onPendingChange={setPendingAttachments}
+                    />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    value={
-                      formatDateForInput(editedTask.due_date) ||
-                      formatDateForInput(fullTask?.due_date) ||
-                      ""
-                    }
-                    onChange={(e) =>
-                      setEditedTask({ ...editedTask, due_date: e.target.value })
-                    }
-                    className="px-3 py-1.5 text-sm rounded-lg border border-cream-border text-charcoal"
+              )}
+
+              {/* ── Comments tab ── */}
+              {!isCreateMode && activeTab === "comments" && (
+                <div className="p-6">
+                  <TaskComments
+                    taskId={task.id}
+                    comments={fullTask?.comments || []}
                   />
                 </div>
-              </div>
+              )}
 
-              {/* Assignees — works in both create and edit mode */}
-              <div>
-                <label className="block text-xs font-medium uppercase mb-2 text-gray-medium">
-                  Assignees
-                </label>
-                <CreateModeAssignees
-                  workspaceId={workspaceId}
-                  selected={pendingAssignees}
-                  onChange={setPendingAssignees}
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-charcoal">
-                  Description
-                </label>
-                <div className="rounded-lg p-4 bg-cream-light border border-cream-border">
-                  <TaskDescription
-                    content={
-                      isCreateMode
-                        ? editedTask.description || ""
-                        : fullTask?.description || ""
-                    }
-                    editable={true}
-                    onUpdate={(html) =>
-                      setEditedTask({ ...editedTask, description: html })
-                    }
-                  />
+              {/* ── Activity tab ── */}
+              {!isCreateMode && activeTab === "activity" && (
+                <div className="p-6">
+                  <ActivityLog taskId={task.id} />
                 </div>
-              </div>
-
-              {/* Attachments */}
-              <div>
-                <label className="block text-sm font-medium mb-2 text-charcoal">
-                  Attachments
-                </label>
-                <AttachmentsPanel
-                  taskId={task.id}
-                  attachments={fullTask?.attachments || []}
-                  pendingAttachments={pendingAttachments}
-                  onPendingChange={setPendingAttachments}
-                />
-              </div>
+              )}
             </>
-          )}
-
-          {!isCreateMode && activeTab === "comments" && (
-            <TaskComments
-              taskId={task.id}
-              comments={fullTask?.comments || []}
-            />
-          )}
-
-          {!isCreateMode && activeTab === "activity" && (
-            <ActivityLog taskId={task.id} />
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-cream-border">
+        {/* ── Footer ── */}
+        <div className="p-6 border-t border-cream-border shrink-0">
           <button
             onClick={handleSave}
             disabled={
@@ -318,12 +384,12 @@ export default function TaskDrawer({
                 ? !editedTask.title?.trim()
                 : updateMutation.isPending
             }
-            className="w-full py-2.5 font-medium rounded-lg text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50"
+            className="w-full py-2.5 font-medium rounded-lg text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50 transition-colors"
           >
             {isCreateMode
               ? "Create Task"
               : updateMutation.isPending
-                ? "Saving..."
+                ? "Saving…"
                 : "Save Changes"}
           </button>
         </div>
@@ -332,7 +398,7 @@ export default function TaskDrawer({
   );
 }
 
-// ── Create-mode assignee picker (no task ID yet, so no API calls) ─────────────
+// ── Assignee picker (works for both create and edit via pendingAssignees) ─────
 function CreateModeAssignees({ workspaceId, selected, onChange }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
@@ -380,7 +446,7 @@ function CreateModeAssignees({ workspaceId, selected, onChange }) {
         {selected.map((u) => (
           <span
             key={u.id}
-            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-full bg-mint-light border border-cream-dark text-charcoal"
+            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-full bg-mint-light border border-cream-border text-charcoal"
           >
             <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
               {u.name?.[0]?.toUpperCase()}
@@ -411,7 +477,7 @@ function CreateModeAssignees({ workspaceId, selected, onChange }) {
         <button
           type="button"
           onClick={() => setShowDropdown((v) => !v)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-mint text-mint"
+          className="text-xs px-3 py-1.5 rounded-lg border border-mint text-mint hover:bg-mint-light transition-colors"
         >
           + Add Assignee
         </button>
@@ -428,7 +494,7 @@ function CreateModeAssignees({ workspaceId, selected, onChange }) {
                   key={m.user_id}
                   type="button"
                   onClick={() => add(m)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-mint text-left"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-cream-light text-left"
                 >
                   <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
                     {m.user?.name?.[0]?.toUpperCase() || "?"}
@@ -444,133 +510,72 @@ function CreateModeAssignees({ workspaceId, selected, onChange }) {
   );
 }
 
-// ── Edit-mode assignees (with live API calls) ────────────────────────────────
-function AssigneesPanel({ taskId, task, workspaceId }) {
-  const queryClient = useQueryClient();
-  const [showDropdown, setShowDropdown] = useState(false);
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
-        setShowDropdown(false);
+// ── Attachments panel ─────────────────────────────────────────────────────────
+function fileIcon(mime = "") {
+  if (mime.startsWith("image/"))
+    return {
+      icon: "🖼",
+      color: "text-purple-500",
+      bg: "bg-purple-50",
+      border: "border-purple-100",
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const { data: members = [] } = useQuery({
-    queryKey: ["workspace-members", workspaceId],
-    queryFn: () =>
-      workspaceId
-        ? workspaceApi.members.list(workspaceId).then((r) => r.data)
-        : Promise.resolve([]),
-    enabled: !!workspaceId,
-  });
-
-  const assignMutation = useMutation({
-    mutationFn: (userId) => taskApi.assign(taskId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["task", taskId]);
-      queryClient.invalidateQueries(["board-tasks"]);
-      setShowDropdown(false);
-      toast.success("Assignee added");
-    },
-    onError: (err) =>
-      toast.error(err.response?.data?.message || "Failed to assign"),
-  });
-
-  const unassignMutation = useMutation({
-    mutationFn: (userId) => taskApi.unassign(taskId, userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["task", taskId]);
-      queryClient.invalidateQueries(["board-tasks"]);
-      toast.success("Assignee removed");
-    },
-    onError: (err) =>
-      toast.error(err.response?.data?.message || "Failed to remove"),
-  });
-
-  const assignees = task?.assignees || [];
-  const assignedIds = assignees.map((a) => a.id);
-  const available = members.filter((m) => !assignedIds.includes(m.user_id));
-
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap gap-2">
-        {assignees.length === 0 && (
-          <span className="text-sm text-gray-medium">No assignees</span>
-        )}
-        {assignees.map((a) => (
-          <span
-            key={a.id}
-            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-full bg-mint-light border border-cream-dark text-charcoal"
-          >
-            <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
-              {a.name?.[0]?.toUpperCase()}
-            </div>
-            {a.name}
-            <button
-              onClick={() => unassignMutation.mutate(a.id)}
-              disabled={unassignMutation.isPending}
-              className="text-gray-medium hover:text-red-500 disabled:opacity-50"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          </span>
-        ))}
-      </div>
-      <div className="relative">
-        <button
-          onClick={() => setShowDropdown((v) => !v)}
-          className="text-xs px-3 py-1.5 rounded-lg border border-mint text-mint"
-        >
-          + Add Assignee
-        </button>
-        {showDropdown && (
-          <div
-            ref={dropdownRef}
-            className="absolute z-10 mt-1 w-48 bg-white border border-cream-border rounded-lg shadow-lg max-h-40 overflow-y-auto"
-          >
-            {available.length === 0 ? (
-              <p className="p-3 text-sm text-gray-medium">
-                No more members to add
-              </p>
-            ) : (
-              available.map((m) => (
-                <button
-                  key={m.user_id}
-                  onClick={() => assignMutation.mutate(m.user_id)}
-                  disabled={assignMutation.isPending}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-mint text-left disabled:opacity-50"
-                >
-                  <div className="w-5 h-5 rounded-full bg-mint flex items-center justify-center text-xs text-white">
-                    {m.user?.name?.[0]?.toUpperCase() || "?"}
-                  </div>
-                  {m.user?.name || "Unknown"}
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+  if (mime.includes("pdf"))
+    return {
+      icon: "📄",
+      color: "text-red-500",
+      bg: "bg-red-50",
+      border: "border-red-100",
+    };
+  if (mime.includes("word") || mime.includes("document"))
+    return {
+      icon: "📝",
+      color: "text-blue-500",
+      bg: "bg-blue-50",
+      border: "border-blue-100",
+    };
+  if (mime.includes("sheet") || mime.includes("excel") || mime.includes("csv"))
+    return {
+      icon: "📊",
+      color: "text-green-600",
+      bg: "bg-green-50",
+      border: "border-green-100",
+    };
+  if (mime.includes("zip") || mime.includes("rar") || mime.includes("tar"))
+    return {
+      icon: "🗜",
+      color: "text-yellow-600",
+      bg: "bg-yellow-50",
+      border: "border-yellow-100",
+    };
+  if (mime.startsWith("video/"))
+    return {
+      icon: "🎬",
+      color: "text-pink-500",
+      bg: "bg-pink-50",
+      border: "border-pink-100",
+    };
+  if (mime.startsWith("audio/"))
+    return {
+      icon: "🎵",
+      color: "text-indigo-500",
+      bg: "bg-indigo-50",
+      border: "border-indigo-100",
+    };
+  return {
+    icon: "📎",
+    color: "text-gray-500",
+    bg: "bg-gray-50",
+    border: "border-gray-100",
+  };
 }
 
-// ── Attachments ───────────────────────────────────────────────────────────────
+function formatBytes(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+}
+
 function AttachmentsPanel({
   taskId,
   attachments = [],
@@ -578,122 +583,239 @@ function AttachmentsPanel({
   onPendingChange,
 }) {
   const queryClient = useQueryClient();
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const deleteMutation = useMutation({
     mutationFn: (id) => attachmentApi.delete(id),
+    onMutate: (id) => setDeletingId(id),
     onSuccess: () => {
       queryClient.invalidateQueries(["task", taskId]);
       toast.success("File removed");
     },
-    onError: (err) => {
-      console.error("Delete error:", err.response?.data || err.message);
-      toast.error(err.response?.data?.message || "Failed to delete file");
-    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to remove file"),
+    onSettled: () => setDeletingId(null),
   });
 
-  const handleFileSelect = (e) => {
-    const files = Array.from(e.target.files);
-    if (files.length > 0) {
-      onPendingChange([...pendingAttachments, ...files]);
-    }
-    e.target.value = "";
+  const addFiles = (files) => {
+    if (!files.length) return;
+    onPendingChange([...pendingAttachments, ...files]);
   };
-
-  const removePending = (index) => {
+  const removePending = (index) =>
     onPendingChange(pendingAttachments.filter((_, i) => i !== index));
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    addFiles(Array.from(e.dataTransfer.files));
   };
+  const isEmpty = attachments.length === 0 && pendingAttachments.length === 0;
 
   return (
     <div className="space-y-3">
-      {pendingAttachments.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {pendingAttachments.map((file, index) => (
-            <div
-              key={`pending-${index}`}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-ocean/10 border border-ocean/20"
-            >
-              <svg
-                className="w-4 h-4 text-ocean"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                />
-              </svg>
-              <span className="text-sm text-charcoal">{file.name}</span>
-              <span className="text-xs text-ocean">(pending)</span>
-              <button
-                onClick={() => removePending(index)}
-                className="text-xs text-gray-medium hover:text-red-500"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Saved files */}
       {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {attachments.map((att) => (
-            <div
-              key={att.id}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-mint-light"
-            >
-              <svg
-                className="w-4 h-4 text-mint"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+        <div className="space-y-1.5">
+          {attachments.map((att) => {
+            const { icon, color, bg, border } = fileIcon(att.mime_type);
+            const isDeleting = deletingId === att.id;
+            return (
+              <div
+                key={att.id}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border bg-white transition-opacity ${isDeleting ? "opacity-40" : ""} ${border}`}
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                />
-              </svg>
-              <a
-                href={att.file_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-ocean hover:underline"
-              >
-                {att.file_name}
-              </a>
-              <button
-                onClick={() => deleteMutation.mutate(att.id)}
-                className="text-xs text-gray-medium hover:text-red-500"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+                <div
+                  className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center text-base shrink-0`}
+                >
+                  {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <a
+                    href={att.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`block text-sm font-medium truncate hover:underline ${color}`}
+                  >
+                    {att.file_name}
+                  </a>
+                  {att.file_size && (
+                    <p className="text-xs text-gray-medium">
+                      {formatBytes(att.file_size)}
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <a
+                    href={att.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1.5 rounded-lg text-gray-medium hover:text-ocean hover:bg-ocean/10 transition-colors"
+                    title="Download"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                      />
+                    </svg>
+                  </a>
+                  <button
+                    onClick={() => deleteMutation.mutate(att.id)}
+                    disabled={isDeleting}
+                    className="p-1.5 rounded-lg text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                    title="Remove"
+                  >
+                    {isDeleting ? (
+                      <svg
+                        className="w-4 h-4 animate-spin"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v8H4z"
+                        />
+                      </svg>
+                    ) : (
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
-      <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-mint text-mint cursor-pointer">
-        <svg
-          className="w-4 h-4"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+
+      {/* Pending files */}
+      {pendingAttachments.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-ocean uppercase tracking-wide">
+            Pending — will upload on Save
+          </p>
+          {pendingAttachments.map((file, index) => {
+            const { icon, bg, border } = fileIcon(file.type);
+            return (
+              <div
+                key={`pending-${index}`}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed ${border} bg-ocean/5`}
+              >
+                <div
+                  className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center text-base shrink-0`}
+                >
+                  {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-charcoal truncate">
+                    {file.name}
+                  </p>
+                  <p className="text-xs text-gray-medium">
+                    {formatBytes(file.size)}
+                  </p>
+                </div>
+                <button
+                  onClick={() => removePending(index)}
+                  className="p-1.5 rounded-lg text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors"
+                  title="Cancel"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Drop zone */}
+      <label
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragOver(true);
+        }}
+        onDragLeave={() => setIsDragOver(false)}
+        onDrop={handleDrop}
+        className={`flex flex-col items-center justify-center gap-2 w-full py-5 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
+          isDragOver
+            ? "border-ocean bg-ocean/5 scale-[1.01]"
+            : "border-cream-border hover:border-ocean/40 hover:bg-cream-light/60"
+        }`}
+      >
+        <div
+          className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${isDragOver ? "bg-ocean/20" : "bg-cream-light"}`}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 4v16m8-8H4"
-          />
-        </svg>
-        Upload file
+          <svg
+            className={`w-5 h-5 transition-colors ${isDragOver ? "text-ocean" : "text-gray-medium"}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+            />
+          </svg>
+        </div>
+        {isEmpty ? (
+          <div className="text-center">
+            <p className="text-sm font-medium text-charcoal">
+              Drop files here or click to upload
+            </p>
+            <p className="text-xs text-gray-medium mt-0.5">
+              Any file type · max 20 MB each
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-ocean font-medium">Add more files</p>
+        )}
         <input
           type="file"
           className="hidden"
-          onChange={handleFileSelect}
+          onChange={(e) => {
+            addFiles(Array.from(e.target.files));
+            e.target.value = "";
+          }}
           accept="*/*"
           multiple
         />
@@ -702,7 +824,7 @@ function AttachmentsPanel({
   );
 }
 
-// ── Activity Log ──────────────────────────────────────────────────────────────
+// ── Activity log ──────────────────────────────────────────────────────────────
 function ActivityLog({ taskId }) {
   const { data: logs = [], isLoading } = useQuery({
     queryKey: ["task-activity", taskId],
@@ -723,7 +845,7 @@ function ActivityLog({ taskId }) {
   if (isLoading)
     return (
       <div className="py-8 text-center text-sm text-gray-medium">
-        Loading activity...
+        Loading activity…
       </div>
     );
   if (logs.length === 0)

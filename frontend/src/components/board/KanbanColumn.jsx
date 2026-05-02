@@ -14,8 +14,8 @@ const COLUMN_ACCENT_COLORS = {
   Done: "#F6E3C5",
 };
 
-export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
-  const { setNodeRef, isOver } = useDroppable({
+export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin = false }) {
+  const { setNodeRef: setColumnRef, isOver } = useDroppable({
     id: column.id,
     data: { type: "column", columnId: column.id },
   });
@@ -86,6 +86,7 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
     <>
       {ConfirmDialog}
       <div
+        ref={setColumnRef}
         className={`group flex-shrink-0 w-72 rounded-xl flex flex-col max-h-full transition-all ${isOver ? "ring-2 ring-ocean ring-offset-2" : ""}`}
         style={{
           backgroundColor: "#FAF0E4",
@@ -115,9 +116,9 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
             <>
               <div className="flex items-center gap-2">
                 <h3
-                  className="text-sm font-semibold cursor-pointer text-charcoal"
-                  onDoubleClick={() => { setEditName(column.name); setIsEditing(true); }}
-                  title="Double-click to rename"
+                className={`text-sm font-semibold text-charcoal ${isAdmin ? "cursor-pointer" : ""}`}
+                onDoubleClick={isAdmin ? () => { setEditName(column.name); setIsEditing(true); } : undefined}
+                title={isAdmin ? "Double-click to rename" : undefined}
                 >
                   {column.name}
                 </h3>
@@ -128,6 +129,7 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
                   {tasks.length}
                 </span>
               </div>
+              {isAdmin && (
               <button
                 onClick={handleDeleteColumn}
                 disabled={deleteMutation.isPending}
@@ -138,14 +140,15 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </button>
+              )}
             </>
           )}
         </div>
 
-        <div ref={setNodeRef} className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
+        <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
           <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
             {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} onClick={onTaskClick} desaturated={isDone} />
+              <TaskCard key={task.id} task={task} onClick={onTaskClick} desaturated={isDone} isAdmin={isAdmin} />
             ))}
           </SortableContext>
           {tasks.length === 0 && !isAdding && (

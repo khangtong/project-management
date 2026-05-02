@@ -35,18 +35,30 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-sage rounded-2xl p-5">
-            <div className="text-sm font-medium text-gray-mid mb-1">My Tasks</div>
-            <div className="text-3xl font-bold text-charcoal">{my_tasks.length}</div>
+            <div className="text-sm font-medium text-gray-mid mb-1">
+              My Tasks
+            </div>
+            <div className="text-3xl font-bold text-charcoal">
+              {my_tasks.length}
+            </div>
             <div className="text-xs text-gray-mid mt-1">assigned to you</div>
           </div>
           <div className="bg-[#FFB4A2] rounded-2xl p-5">
-            <div className="text-sm font-medium text-gray-mid mb-1">Overdue</div>
-            <div className="text-3xl font-bold text-charcoal">{overdue_tasks.length}</div>
+            <div className="text-sm font-medium text-gray-mid mb-1">
+              Overdue
+            </div>
+            <div className="text-3xl font-bold text-charcoal">
+              {overdue_tasks.length}
+            </div>
             <div className="text-xs text-gray-mid mt-1">past due date</div>
           </div>
           <div className="bg-ocean rounded-2xl p-5">
-            <div className="text-sm font-medium text-white/80 mb-1">Upcoming</div>
-            <div className="text-3xl font-bold text-white">{upcoming_tasks.length}</div>
+            <div className="text-sm font-medium text-white/80 mb-1">
+              Upcoming
+            </div>
+            <div className="text-3xl font-bold text-white">
+              {upcoming_tasks.length}
+            </div>
             <div className="text-xs text-white/70 mt-1">next 7 days</div>
           </div>
         </div>
@@ -73,9 +85,13 @@ export default function DashboardPage() {
             </h2>
             <div className="space-y-2">
               {upcoming_tasks.length === 0 ? (
-                <p className="text-gray-medium text-sm py-4">No upcoming tasks.</p>
+                <p className="text-gray-medium text-sm py-4">
+                  No upcoming tasks.
+                </p>
               ) : (
-                upcoming_tasks.map((task) => <TaskRow key={task.id} task={task} />)
+                upcoming_tasks.map((task) => (
+                  <TaskRow key={task.id} task={task} />
+                ))
               )}
             </div>
           </section>
@@ -87,7 +103,9 @@ export default function DashboardPage() {
             </h2>
             <div className="space-y-2">
               {my_tasks.length === 0 ? (
-                <p className="text-gray-medium text-sm py-4">No tasks assigned to you.</p>
+                <p className="text-gray-medium text-sm py-4">
+                  No tasks assigned to you.
+                </p>
               ) : (
                 my_tasks.map((task) => <TaskRow key={task.id} task={task} />)
               )}
@@ -123,7 +141,9 @@ function TaskRow({ task, isOverdue = false }) {
           </p>
         </div>
         {task.due_date && (
-          <div className={`text-xs ${isOverdue ? "text-red-500 font-medium" : "text-gray-medium"}`}>
+          <div
+            className={`text-xs ${isOverdue ? "text-red-500 font-medium" : "text-gray-medium"}`}
+          >
             {format(new Date(task.due_date), "MMM d, yyyy")}
           </div>
         )}
@@ -132,8 +152,8 @@ function TaskRow({ task, isOverdue = false }) {
             task.priority === "urgent"
               ? "bg-red-100 text-red-700 border-red-200"
               : task.priority === "high"
-              ? "bg-orange-100 text-orange-700 border-orange-200"
-              : "bg-gray-100 text-gray-medium"
+                ? "bg-orange-100 text-orange-700 border-orange-200"
+                : "bg-sage/20 text-sage"
           }`}
         >
           {task.priority}
