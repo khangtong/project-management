@@ -6,8 +6,8 @@ import { workspaceApi } from "../api/workspaces";
 import { projectApi } from "../api/projects";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { EditWorkspaceModal } from "../components/ui/EditWorkspaceModal";
+import { useWorkspaceRole } from "../hooks/useWorkspaceRole";
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
 const EditIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -19,7 +19,6 @@ const TrashIcon = () => (
   </svg>
 );
 
-// ── Workspaces page ───────────────────────────────────────────────────────────
 export default function WorkspacesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -44,7 +43,6 @@ export default function WorkspacesPage() {
 
   return (
     <div className="max-w-7xl mx-auto p-8">
-      {/* Page header */}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-semibold text-charcoal">Workspaces</h1>
@@ -61,59 +59,28 @@ export default function WorkspacesPage() {
         </button>
       </div>
 
-      {/* Create form */}
       {showCreate && (
         <div className="mb-8 p-6 rounded-2xl bg-white shadow-sm border border-cream-border">
           <h3 className="text-base font-semibold text-charcoal mb-4">Create a new workspace</h3>
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!form.name.trim()) return;
-              createMutation.mutate(form);
-            }}
+            onSubmit={(e) => { e.preventDefault(); if (!form.name.trim()) return; createMutation.mutate(form); }}
             className="space-y-4"
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1">
-                  Name <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                  placeholder="e.g. Design Team"
-                  className="w-full px-3 py-2 rounded-lg border border-cream-border text-charcoal focus:ring-2 focus:ring-ocean focus:border-ocean"
-                  autoFocus
-                  required
-                />
+                <label className="block text-sm font-medium text-charcoal mb-1">Name <span className="text-red-400">*</span></label>
+                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Design Team" className="w-full px-3 py-2 rounded-lg border border-cream-border text-charcoal focus:ring-2 focus:ring-ocean focus:border-ocean" autoFocus required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-charcoal mb-1">
-                  Description <span className="text-gray-medium font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="What is this workspace for?"
-                  className="w-full px-3 py-2 rounded-lg border border-cream-border text-charcoal focus:ring-2 focus:ring-ocean focus:border-ocean"
-                />
+                <label className="block text-sm font-medium text-charcoal mb-1">Description <span className="text-gray-medium font-normal">(optional)</span></label>
+                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} placeholder="What is this workspace for?" className="w-full px-3 py-2 rounded-lg border border-cream-border text-charcoal focus:ring-2 focus:ring-ocean focus:border-ocean" />
               </div>
             </div>
             <div className="flex gap-3 pt-1">
-              <button
-                type="submit"
-                disabled={createMutation.isPending || !form.name.trim()}
-                className="px-5 py-2 rounded-lg font-medium text-sm text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50 transition-colors"
-              >
+              <button type="submit" disabled={createMutation.isPending || !form.name.trim()} className="px-5 py-2 rounded-lg font-medium text-sm text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50 transition-colors">
                 {createMutation.isPending ? "Creating…" : "Create Workspace"}
               </button>
-              <button
-                type="button"
-                onClick={() => { setShowCreate(false); setForm({ name: "", description: "" }); }}
-                className="px-5 py-2 rounded-lg border border-cream-border text-sm text-gray-medium hover:bg-gray-50 transition-colors"
-              >
+              <button type="button" onClick={() => { setShowCreate(false); setForm({ name: "", description: "" }); }} className="px-5 py-2 rounded-lg border border-cream-border text-sm text-gray-medium hover:bg-gray-50 transition-colors">
                 Cancel
               </button>
             </div>
@@ -121,7 +88,6 @@ export default function WorkspacesPage() {
         </div>
       )}
 
-      {/* Workspace grid */}
       {isLoading ? (
         <div className="text-center py-16 text-gray-medium">Loading…</div>
       ) : workspaces.length === 0 ? (
@@ -145,14 +111,16 @@ export default function WorkspacesPage() {
   );
 }
 
-// ── Workspace card ────────────────────────────────────────────────────────────
 function WorkspaceCard({ workspace }) {
   const navigate = useNavigate();
-  const [showCreateProject, setShowCreateProject] = useState(false);
-  const [projectName, setProjectName] = useState("");
   const queryClient = useQueryClient();
   const [confirm, ConfirmDialog] = useConfirm();
   const [editingWorkspace, setEditingWorkspace] = useState(false);
+  const [showCreateProject, setShowCreateProject] = useState(false);
+  const [projectName, setProjectName] = useState("");
+
+  // Role check for this specific workspace
+  const { isAdmin } = useWorkspaceRole(workspace.id);
 
   const { data: fullWorkspace } = useQuery({
     queryKey: ["workspace", workspace.id],
@@ -197,12 +165,10 @@ function WorkspaceCard({ workspace }) {
   return (
     <>
       {ConfirmDialog}
-      {editingWorkspace && (
-        <EditWorkspaceModal workspace={workspace} onClose={() => setEditingWorkspace(false)} />
-      )}
+      {editingWorkspace && <EditWorkspaceModal workspace={workspace} onClose={() => setEditingWorkspace(false)} />}
 
       <div className="flex flex-col rounded-2xl bg-white shadow-sm border border-cream-border overflow-hidden">
-        {/* Card header */}
+        {/* Header */}
         <div className="p-5 border-b border-cream-border">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -211,25 +177,24 @@ function WorkspaceCard({ workspace }) {
                 <p className="text-xs text-gray-medium mt-0.5 line-clamp-2">{workspace.description}</p>
               )}
             </div>
-            {/* Action buttons — always visible */}
-            <div className="flex items-center gap-1 shrink-0">
-              <button
-                onClick={() => setEditingWorkspace(true)}
-                className="p-1.5 rounded-lg text-gray-medium hover:text-ocean hover:bg-ocean/10 transition-colors"
-                title="Edit workspace"
-              >
-                <EditIcon />
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleteWorkspaceMutation.isPending}
-                className="p-1.5 rounded-lg text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
-                title="Delete workspace"
-              >
-                <TrashIcon />
-              </button>
-            </div>
+            {/* Admin-only actions */}
+            {isAdmin && (
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => setEditingWorkspace(true)} className="p-1.5 rounded-lg text-gray-medium hover:text-ocean hover:bg-ocean/10 transition-colors" title="Edit workspace">
+                  <EditIcon />
+                </button>
+                <button onClick={handleDelete} disabled={deleteWorkspaceMutation.isPending} className="p-1.5 rounded-lg text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40" title="Delete workspace">
+                  <TrashIcon />
+                </button>
+              </div>
+            )}
           </div>
+          {/* Role badge */}
+          {!isAdmin && (
+            <span className="mt-2 inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-cream-light text-gray-medium border border-cream-border">
+              Member
+            </span>
+          )}
         </div>
 
         {/* Projects list */}
@@ -252,59 +217,33 @@ function WorkspaceCard({ workspace }) {
             ))
           )}
 
-          {/* Inline quick-add project */}
-          {showCreateProject ? (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!projectName.trim()) return;
-                createProjectMutation.mutate({ name: projectName });
-              }}
-              className="flex gap-2 pt-1"
-            >
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
-                placeholder="Project name"
-                className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-cream-border text-charcoal focus:ring-1 focus:ring-ocean focus:border-ocean"
-                autoFocus
-                onKeyDown={(e) => e.key === "Escape" && setShowCreateProject(false)}
-              />
-              <button
-                type="submit"
-                disabled={createProjectMutation.isPending}
-                className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50"
+          {/* Add project — admin only */}
+          {isAdmin && (
+            showCreateProject ? (
+              <form
+                onSubmit={(e) => { e.preventDefault(); if (!projectName.trim()) return; createProjectMutation.mutate({ name: projectName }); }}
+                className="flex gap-2 pt-1"
               >
-                {createProjectMutation.isPending ? "…" : "Add"}
+                <input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Project name" className="flex-1 px-2.5 py-1.5 text-sm rounded-lg border border-cream-border text-charcoal focus:ring-1 focus:ring-ocean focus:border-ocean" autoFocus onKeyDown={(e) => e.key === "Escape" && setShowCreateProject(false)} />
+                <button type="submit" disabled={createProjectMutation.isPending} className="text-xs px-3 py-1.5 rounded-lg font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50">
+                  {createProjectMutation.isPending ? "…" : "Add"}
+                </button>
+                <button type="button" onClick={() => { setShowCreateProject(false); setProjectName(""); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-cream-border text-gray-medium hover:bg-gray-50">✕</button>
+              </form>
+            ) : (
+              <button onClick={() => setShowCreateProject(true)} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-medium hover:text-ocean hover:bg-cream-light transition-colors border border-dashed border-cream-border">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add project
               </button>
-              <button
-                type="button"
-                onClick={() => { setShowCreateProject(false); setProjectName(""); }}
-                className="text-xs px-2.5 py-1.5 rounded-lg border border-cream-border text-gray-medium hover:bg-gray-50"
-              >
-                ✕
-              </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => setShowCreateProject(true)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-medium hover:text-ocean hover:bg-cream-light transition-colors border border-dashed border-cream-border"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add project
-            </button>
+            )
           )}
         </div>
 
-        {/* Card footer */}
+        {/* Footer */}
         <div className="px-4 py-3 border-t border-cream-border bg-cream-light/50">
-          <button
-            onClick={() => navigate(`/workspaces/${workspace.id}`)}
-            className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-ocean hover:text-ocean/80 transition-colors"
-          >
+          <button onClick={() => navigate(`/workspaces/${workspace.id}`)} className="w-full flex items-center justify-center gap-1.5 text-sm font-medium text-ocean hover:text-ocean/80 transition-colors">
             Open workspace
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

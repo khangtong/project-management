@@ -64,6 +64,7 @@ export default function TaskDrawer({
   task,
   projectId,
   workspaceId,
+  isAdmin = true, // members can still edit task fields — only delete is admin-only
   isCreateMode = false,
   columns = [],
   selectedColumnId,
@@ -104,24 +105,28 @@ export default function TaskDrawer({
   const updateMutation = useMutation({
     mutationFn: async (data) => {
       await taskApi.update(task.id, data);
-      const savedIds = (fullTask?.assignees || []).map((a) => a.id);
+      const savedIds   = (fullTask?.assignees || []).map((a) => a.id);
       const pendingIds = pendingAssignees.map((a) => a.id);
-      const toAdd = pendingIds.filter((id) => !savedIds.includes(id));
-      const toRemove = savedIds.filter((id) => !pendingIds.includes(id));
+      const toAdd      = pendingIds.filter((id) => !savedIds.includes(id));
+      const toRemove   = savedIds.filter((id) => !pendingIds.includes(id));
       await Promise.all(toAdd.map((id) => taskApi.assign(task.id, id)));
       await Promise.all(toRemove.map((id) => taskApi.unassign(task.id, id)));
       for (const file of pendingAttachments) {
         await attachmentApi.create(task.id, file);
       }
     },
-    onSuccess: () => {
+    onMutate: () => toast.loading("Saving…", { id: "task-save" }),
+    onSuccess: async () => {
       setPendingAttachments([]);
-      queryClient.invalidateQueries(["task", task.id]);
-      queryClient.invalidateQueries(["board-tasks"]);
-      toast.success("Task saved");
+      // Await both refetches so the UI is updated before the toast changes
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["task", task.id] }),
+        queryClient.refetchQueries({ queryKey: ["board-tasks"] }),
+      ]);
+      toast.success("Task saved", { id: "task-save" });
     },
     onError: (err) =>
-      toast.error(err.response?.data?.message || "Failed to save task"),
+      toast.error(err.response?.data?.message || "Failed to save task", { id: "task-save" }),
   });
 
   useEffect(() => {
@@ -162,7 +167,7 @@ export default function TaskDrawer({
           </h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-red-50 text-gray-medium hover:text-red-500"
+            className="p-2 rounded-lg hover:bg-gray-200 text-gray-medium"
           >
             <svg
               className="w-5 h-5"

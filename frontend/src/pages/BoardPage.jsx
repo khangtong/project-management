@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -20,56 +20,574 @@ import { workspaceApi } from "../api/workspaces";
 import { attachmentApi } from "../api/attachments";
 import { useAuth } from "../store/AuthContext";
 
+// ── Filter panel ──────────────────────────────────────────────────────────────
+const PRIORITIES = ["low", "medium", "high", "urgent"];
+const PRIORITY_LABELS = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  urgent: "Urgent",
+};
+const PRIORITY_COLORS = {
+  low: "bg-gray-100 text-gray-600 border-gray-200",
+  medium: "bg-sage/20 text-sage border-sage",
+  high: "bg-orange-100 text-orange-700 border-orange-200",
+  urgent: "bg-red-100 text-red-600 border-red-200",
+};
+const PRIORITY_DOT = {
+  low: "bg-gray-400",
+  medium: "bg-sage",
+  high: "bg-orange-500",
+  urgent: "bg-red-500",
+};
+
+function FilterDropdown({
+  members,
+  filters,
+  onChange,
+  onClear,
+  onClose,
+  totalTasks,
+  filteredTasks,
+}) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const hasFilters =
+    filters.priorities.length > 0 || filters.assigneeId || filters.overdue;
+
+  const togglePriority = (p) => {
+    const next = filters.priorities.includes(p)
+      ? filters.priorities.filter((x) => x !== p)
+      : [...filters.priorities, p];
+    onChange({ ...filters, priorities: next });
+  };
+
+  const toggleAssignee = (userId) => {
+    onChange({
+      ...filters,
+      assigneeId: filters.assigneeId === userId ? "" : userId,
+    });
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-full right-0 mt-2 z-50 w-80 bg-white rounded-2xl shadow-xl border border-cream-border overflow-hidden"
+      style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-cream-border">
+        <div className="flex items-center gap-2">
+          <svg
+            className="w-4 h-4 text-ocean"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+            />
+          </svg>
+          <span className="text-sm font-semibold text-charcoal">Filters</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasFilters && (
+            <button
+              onClick={onClear}
+              className="text-xs text-gray-medium hover:text-red-500 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-gray-medium hover:bg-gray-200 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-5 max-h-[70vh] overflow-y-auto">
+        {/* Priority */}
+        <div>
+          <p className="text-xs font-semibold text-gray-medium uppercase tracking-wide mb-2.5">
+            Priority
+          </p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {PRIORITIES.map((p) => {
+              const active = filters.priorities.includes(p);
+              return (
+                <button
+                  key={p}
+                  onClick={() => togglePriority(p)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
+                    active
+                      ? PRIORITY_COLORS[p] + " shadow-sm"
+                      : "bg-gray-50 text-gray-medium border-transparent hover:bg-cream-light hover:border-cream-border"
+                  }`}
+                >
+                  <div
+                    className={`w-2 h-2 rounded-full shrink-0 ${PRIORITY_DOT[p]}`}
+                  />
+                  {PRIORITY_LABELS[p]}
+                  {active && (
+                    <svg
+                      className="w-3 h-3 ml-auto"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-cream-border" />
+
+        {/* Assignee */}
+        {members.length > 0 && (
+          <div>
+            <p className="text-xs font-semibold text-gray-medium uppercase tracking-wide mb-2.5">
+              Assignee
+            </p>
+            <div className="space-y-1">
+              {members.map((m) => {
+                const active = filters.assigneeId === m.user_id;
+                const name = m.user?.name || m.user?.email || "Unknown";
+                return (
+                  <button
+                    key={m.user_id}
+                    onClick={() => toggleAssignee(m.user_id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm transition-all ${
+                      active
+                        ? "bg-ocean/10 text-ocean border border-ocean/20"
+                        : "hover:bg-cream-light text-charcoal border border-transparent"
+                    }`}
+                  >
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0 ${
+                        active ? "bg-ocean" : "bg-mint"
+                      }`}
+                    >
+                      {name[0]?.toUpperCase()}
+                    </div>
+                    <span className="flex-1 text-left truncate font-medium">
+                      {name}
+                    </span>
+                    {m.role && (
+                      <span className="text-[10px] text-gray-medium capitalize shrink-0">
+                        {m.role}
+                      </span>
+                    )}
+                    {active && (
+                      <svg
+                        className="w-4 h-4 text-ocean shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Divider */}
+        <div className="h-px bg-cream-border" />
+
+        {/* Due date */}
+        <div>
+          <p className="text-xs font-semibold text-gray-medium uppercase tracking-wide mb-2.5">
+            Due Date
+          </p>
+          <button
+            onClick={() => onChange({ ...filters, overdue: !filters.overdue })}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium border transition-all ${
+              filters.overdue
+                ? "bg-red-50 text-red-600 border-red-200"
+                : "bg-gray-50 text-gray-medium border-transparent hover:bg-cream-light hover:border-cream-border"
+            }`}
+          >
+            <svg
+              className={`w-4 h-4 shrink-0 ${filters.overdue ? "text-red-500" : "text-gray-medium"}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Overdue tasks only
+            {filters.overdue && (
+              <svg
+                className="w-3.5 h-3.5 ml-auto text-red-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  clipRule="evenodd"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Results footer */}
+      <div
+        className={`px-4 py-3 border-t border-cream-border text-xs ${
+          hasFilters ? "bg-ocean/5" : "bg-cream-light/50"
+        }`}
+      >
+        {hasFilters ? (
+          <span className="text-ocean font-medium">
+            Showing {filteredTasks} of {totalTasks} task
+            {totalTasks !== 1 ? "s" : ""}
+          </span>
+        ) : (
+          <span className="text-gray-medium">
+            No filters applied — showing all {totalTasks} task
+            {totalTasks !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Add column dropdown ─────────────────────────────────────────────────────
+const COLUMN_PRESET_COLORS = [
+  "#6CC4A1",
+  "#4CACBC",
+  "#A0D995",
+  "#818cf8",
+  "#fb923c",
+  "#f472b6",
+  "#facc15",
+  "#2dd4bf",
+  "#60a5fa",
+  "#a78bfa",
+  "#34d399",
+  "#f87171",
+];
+
+function AddColumnDropdown({ onAdd, isPending, onClose }) {
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(COLUMN_PRESET_COLORS[0]);
+
+  useEffect(() => {
+    // Close on outside click
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    // Auto-focus the input when the dropdown opens
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const handleSubmit = (e) => {
+    e?.preventDefault();
+    if (!name.trim()) return;
+    onAdd({ name: name.trim(), color });
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-full right-0 mt-2 z-50 w-72 bg-white rounded-2xl shadow-xl border border-cream-border overflow-hidden"
+      style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}
+    >
+      {/* Live preview strip */}
+      <div
+        className="h-1.5 w-full transition-colors duration-150"
+        style={{ backgroundColor: color }}
+      />
+
+      <div className="p-4 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <svg
+              className="w-4 h-4 text-ocean"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            <span className="text-sm font-semibold text-charcoal">
+              New Column
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1 rounded-lg text-gray-medium hover:bg-gray-200 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
+
+        {/* Name input */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-medium uppercase tracking-wide mb-1.5">
+              Column Name
+            </label>
+            <div className="relative">
+              {/* Colored left border indicator */}
+              <div
+                className="absolute left-0 top-0 bottom-0 w-1 rounded-l-lg transition-colors duration-150"
+                style={{ backgroundColor: color }}
+              />
+              <input
+                ref={inputRef}
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") onClose();
+                }}
+                placeholder="e.g. In Review, Blocked…"
+                maxLength={40}
+                className="w-full pl-4 pr-3 py-2.5 text-sm rounded-lg border border-cream-border text-charcoal focus:outline-none focus:ring-2 focus:ring-ocean/30 focus:border-ocean transition-colors"
+              />
+            </div>
+            <p className="text-[10px] text-gray-medium mt-1 text-right">
+              {name.length}/40
+            </p>
+          </div>
+
+          {/* Color picker */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-medium uppercase tracking-wide mb-2">
+              Accent Color
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {COLUMN_PRESET_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setColor(c)}
+                  className="relative w-6 h-6 rounded-full transition-all hover:scale-110 focus:outline-none"
+                  style={{ backgroundColor: c }}
+                  title={c}
+                >
+                  {color === c && (
+                    <span className="absolute inset-0 flex items-center justify-center">
+                      <svg
+                        className="w-3.5 h-3.5 text-white drop-shadow"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Preview pill */}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cream-light">
+            <div
+              className="w-1 h-5 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+            <span className="text-sm font-medium text-charcoal truncate">
+              {name || (
+                <span className="text-gray-medium italic">
+                  Column name preview
+                </span>
+              )}
+            </span>
+            <span
+              className="ml-auto text-xs px-1.5 py-0.5 rounded-full text-white font-medium"
+              style={{ backgroundColor: color }}
+            >
+              0
+            </span>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="submit"
+              disabled={!name.trim() || isPending}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {isPending ? (
+                <svg
+                  className="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8v8H4z"
+                  />
+                </svg>
+              ) : (
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+              )}
+              {isPending ? "Adding…" : "Add Column"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-medium border border-cream-border hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <p className="text-[10px] text-gray-medium text-center">
+            Press{" "}
+            <kbd className="px-1 py-0.5 rounded bg-cream-light border border-cream-border font-mono text-[10px]">
+              ↵
+            </kbd>{" "}
+            to add ·{" "}
+            <kbd className="px-1 py-0.5 rounded bg-cream-light border border-cream-border font-mono text-[10px]">
+              Esc
+            </kbd>{" "}
+            to cancel
+          </p>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Board page ────────────────────────────────────────────────────────────────
+const DEFAULT_FILTERS = { priorities: [], assigneeId: "", overdue: false };
+
 export default function BoardPage() {
   const { projectId } = useParams();
   const queryClient = useQueryClient();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
+
   const [selectedTask, setSelectedTask] = useState(null);
-  const [activeTask, setActiveTask] = useState(null); // task being dragged (for DragOverlay)
+  const [activeTask, setActiveTask] = useState(null);
   const [showAddColumn, setShowAddColumn] = useState(false);
-  const [newColumnName, setNewColumnName] = useState("");
   const [showAddTaskDrawer, setShowAddTaskDrawer] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [selectedColumnId, setSelectedColumnId] = useState(null);
 
   const { data: board, isLoading } = useQuery({
     queryKey: ["board", projectId],
-    queryFn: async () => {
-      const boardData = await boardApi.show(projectId).then((r) => r.data);
-      return boardData;
-    },
+    queryFn: () => boardApi.show(projectId).then((r) => r.data),
   });
 
   const boardId = board?.id;
   const columns = board?.columns || [];
   const firstColumnId = columns[0]?.id;
-  const [selectedColumnId, setSelectedColumnId] = useState(null);
   const targetColumnId = selectedColumnId || firstColumnId;
-
-  const handleAddTask = (taskData, pendingAssignees = [], pendingAttachments = []) => {
-    const toastId = toast.loading("Creating task…");
-    taskApi.create(targetColumnId, taskData).then(async (res) => {
-      const newTask = res.data;
-      if (pendingAssignees.length > 0) {
-        await Promise.all(pendingAssignees.map((u) => taskApi.assign(newTask.id, u.id)));
-      }
-      if (pendingAttachments.length > 0) {
-        await Promise.all(pendingAttachments.map((file) => attachmentApi.create(newTask.id, file)));
-      }
-      queryClient.invalidateQueries(["board-tasks", boardId]);
-      setShowAddTaskDrawer(false);
-      toast.success("Task created", { id: toastId });
-    }).catch((err) => {
-      toast.error(err.response?.data?.message || "Failed to create task", { id: toastId });
-    });
-  };
-
   const workspaceId = board?.project?.workspace_id;
+
   const { user } = useAuth();
 
   const { data: members = [] } = useQuery({
     queryKey: ["workspace-members", workspaceId],
-    queryFn: () => workspaceId ? workspaceApi.members.list(workspaceId).then((r) => r.data) : Promise.resolve([]),
+    queryFn: () =>
+      workspaceId
+        ? workspaceApi.members.list(workspaceId).then((r) => r.data)
+        : Promise.resolve([]),
     enabled: !!workspaceId,
   });
 
@@ -84,6 +602,44 @@ export default function BoardPage() {
     enabled: !!boardId,
   });
 
+  // Apply filters client-side — tasks are already loaded
+  const filteredTasksByColumn = useMemo(() => {
+    const hasFilters =
+      filters.priorities.length > 0 || filters.assigneeId || filters.overdue;
+    if (!hasFilters) return tasksByColumn;
+
+    const now = new Date();
+    const result = {};
+    for (const [colId, tasks] of Object.entries(tasksByColumn)) {
+      result[colId] = tasks.filter((task) => {
+        if (
+          filters.priorities.length > 0 &&
+          !filters.priorities.includes(task.priority)
+        )
+          return false;
+        if (
+          filters.assigneeId &&
+          !task.assignees?.some((a) => a.id === filters.assigneeId)
+        )
+          return false;
+        if (
+          filters.overdue &&
+          (!task.due_date || new Date(task.due_date) >= now)
+        )
+          return false;
+        return true;
+      });
+    }
+    return result;
+  }, [tasksByColumn, filters]);
+
+  const totalTasks = Object.values(tasksByColumn).flat().length;
+  const filteredTotal = Object.values(filteredTasksByColumn).flat().length;
+  const activeFilterCount =
+    filters.priorities.length +
+    (filters.assigneeId ? 1 : 0) +
+    (filters.overdue ? 1 : 0);
+
   const moveMutation = useMutation({
     mutationFn: ({ taskId, columnId, position }) =>
       taskApi.move(taskId, { column_id: columnId, position }),
@@ -92,26 +648,61 @@ export default function BoardPage() {
       queryClient.invalidateQueries(["board-tasks", boardId]);
       toast.success("Task moved", { id: "move" });
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to move task", { id: "move" }),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to move task", {
+        id: "move",
+      }),
   });
 
   const addColumnMutation = useMutation({
     mutationFn: (data) => taskApi.column.create(projectId, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["board", projectId]);
-      queryClient.invalidateQueries(["board-tasks", boardId]);
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["board", projectId] }),
+        queryClient.refetchQueries({ queryKey: ["board-tasks", boardId] }),
+      ]);
       setShowAddColumn(false);
-      setNewColumnName("");
       toast.success("Column added");
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to add column"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to add column"),
   });
+
+  const handleAddTask = (
+    taskData,
+    pendingAssignees = [],
+    pendingAttachments = [],
+  ) => {
+    const toastId = toast.loading("Creating task…");
+    taskApi
+      .create(targetColumnId, taskData)
+      .then(async (res) => {
+        const newTask = res.data;
+        if (pendingAssignees.length > 0)
+          await Promise.all(
+            pendingAssignees.map((u) => taskApi.assign(newTask.id, u.id)),
+          );
+        if (pendingAttachments.length > 0)
+          await Promise.all(
+            pendingAttachments.map((file) =>
+              attachmentApi.create(newTask.id, file),
+            ),
+          );
+        queryClient.invalidateQueries(["board-tasks", boardId]);
+        setShowAddTaskDrawer(false);
+        toast.success("Task created", { id: toastId });
+      })
+      .catch((err) =>
+        toast.error(err.response?.data?.message || "Failed to create task", {
+          id: toastId,
+        }),
+      );
+  };
 
   const handleDragStart = (event) => {
     const { active } = event;
-    if (active.data.current?.type === "task") {
+    if (active.data.current?.type === "task")
       setActiveTask(active.data.current.task);
-    }
   };
 
   const handleDragEnd = (event) => {
@@ -120,52 +711,48 @@ export default function BoardPage() {
     if (!over) return;
 
     const activeData = active.data.current;
-
     if (activeData?.type === "task") {
-      // Determine the target column: over could be a column droppable or a task
       const overData = over.data.current;
-      const targetColumnId = overData?.type === "task"
-        ? overData.task.column_id          // dropped onto another task
-        : over.id;                          // dropped onto a column droppable
+      const targetColId =
+        overData?.type === "task" ? overData.task.column_id : over.id;
+      if (!targetColId) return;
 
-      if (!targetColumnId) return;
-
-      // Determine position: if dropped onto a task, slot above it; else append
-      const targetTasks = tasksByColumn[targetColumnId] || [];
-      let position = targetTasks.length; // default: end of column
+      const targetTasks = tasksByColumn[targetColId] || [];
+      let position = targetTasks.length;
       if (overData?.type === "task" && overData.task.id !== active.id) {
         const overIndex = targetTasks.findIndex((t) => t.id === over.id);
         if (overIndex !== -1) position = overIndex;
       }
-
-      moveMutation.mutate({ taskId: active.id, columnId: targetColumnId, position });
+      moveMutation.mutate({
+        taskId: active.id,
+        columnId: targetColId,
+        position,
+      });
     } else {
-      // Column reorder
       if (active.id === over.id) return;
       const oldIndex = columns.findIndex((c) => c.id === active.id);
       const newIndex = columns.findIndex((c) => c.id === over.id);
       if (oldIndex !== -1 && newIndex !== -1) {
         const reordered = arrayMove(columns, oldIndex, newIndex);
-        taskApi.column.reorder(reordered.map((c, i) => ({ id: c.id, position: i })));
+        taskApi.column.reorder(
+          reordered.map((c, i) => ({ id: c.id, position: i })),
+        );
         queryClient.invalidateQueries(["board", projectId]);
       }
     }
   };
 
-  const handleTaskClick = (task) => {
-    setSelectedTask(task);
-  };
-
   if (isLoading || tasksLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ocean"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ocean" />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col h-full">
+      {/* ── Topbar ── */}
       <div className="flex items-center justify-between px-6 py-4 border-b bg-cream border-cream-border shrink-0">
         <div className="flex items-center gap-4">
           <div>
@@ -174,14 +761,12 @@ export default function BoardPage() {
             </h1>
             <p className="text-sm text-gray-medium">{board?.project?.name}</p>
           </div>
-          
           {members.length > 0 && (
             <div className="flex -space-x-2">
               {members.slice(0, 5).map((member) => (
                 <div
                   key={member.id}
                   className="w-8 h-8 rounded-full border-2 border-cream flex items-center justify-center text-xs font-medium text-white bg-mint"
-                  style={{ backgroundColor: "#6CC4A1" }}
                   title={member.user?.name}
                 >
                   {member.user?.name?.[0]?.toUpperCase() || "?"}
@@ -197,33 +782,83 @@ export default function BoardPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-teal text-teal hover:bg-teal/10 transition-colors">
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          {/* Filter button with floating dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              className={`relative flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                showFilters || activeFilterCount > 0
+                  ? "border-ocean text-ocean bg-ocean/5"
+                  : "border-teal text-teal hover:bg-teal/10"
+              }`}
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+                />
+              </svg>
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-ocean text-white text-[10px] font-bold flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+
+            {showFilters && (
+              <FilterDropdown
+                members={members}
+                filters={filters}
+                onChange={setFilters}
+                onClear={() => setFilters(DEFAULT_FILTERS)}
+                onClose={() => setShowFilters(false)}
+                totalTasks={totalTasks}
+                filteredTasks={filteredTotal}
               />
-            </svg>
-            Filter
-          </button>
+            )}
+          </div>
 
           {isAdmin && (
-            <button
-              onClick={() => setShowAddColumn((v) => !v)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-ocean text-ocean hover:bg-ocean/10 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Add Column
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowAddColumn((v) => !v)}
+                className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${
+                  showAddColumn
+                    ? "border-ocean text-ocean bg-ocean/5"
+                    : "border-ocean text-ocean hover:bg-ocean/10"
+                }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Add Column
+              </button>
+              {showAddColumn && (
+                <AddColumnDropdown
+                  onAdd={(data) => addColumnMutation.mutate(data)}
+                  isPending={addColumnMutation.isPending}
+                  onClose={() => setShowAddColumn(false)}
+                />
+              )}
+            </div>
           )}
 
           <button
@@ -248,43 +883,7 @@ export default function BoardPage() {
         </div>
       </div>
 
-      {showAddColumn && (
-        <div className="px-6 py-3 border-b bg-cream-light border-cream-border shrink-0">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              addColumnMutation.mutate({ name: newColumnName });
-            }}
-            className="flex gap-2"
-          >
-            <input
-              type="text"
-              value={newColumnName}
-              onChange={(e) => setNewColumnName(e.target.value)}
-              placeholder="Column name"
-              className="px-3 py-2 text-sm rounded-lg border border-cream-border text-charcoal"
-              autoFocus
-            />
-            <button
-              type="submit"
-              className="px-3 py-2 text-sm rounded-lg text-white bg-ocean hover:bg-ocean/90 disabled:opacity-50"
-            >
-              {addColumnMutation.isPending ? "..." : "Add"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddColumn(false);
-                setNewColumnName("");
-              }}
-              className="px-3 py-2 text-sm rounded-lg text-gray-medium hover:bg-white/50"
-            >
-              Cancel
-            </button>
-          </form>
-        </div>
-      )}
-
+      {/* ── Board ── */}
       <DndContext
         sensors={sensors}
         collisionDetection={rectIntersection}
@@ -297,8 +896,8 @@ export default function BoardPage() {
               <KanbanColumn
                 key={column.id}
                 column={column}
-                tasks={tasksByColumn[column.id] || []}
-                onTaskClick={handleTaskClick}
+                tasks={filteredTasksByColumn[column.id] || []}
+                onTaskClick={(task) => setSelectedTask(task)}
                 isAdmin={isAdmin}
               />
             ))}
@@ -313,25 +912,30 @@ export default function BoardPage() {
         </DragOverlay>
       </DndContext>
 
+      {/* ── Task drawers ── */}
       {selectedTask && (
         <TaskDrawer
           task={selectedTask}
           projectId={projectId}
           workspaceId={workspaceId}
+          isAdmin={isAdmin}
           onClose={() => setSelectedTask(null)}
         />
       )}
-
       {showAddTaskDrawer && (
         <TaskDrawer
           task={{ title: "", priority: "medium", description: "" }}
           projectId={projectId}
           workspaceId={workspaceId}
+          isAdmin={isAdmin}
           isCreateMode={true}
           columns={columns}
           selectedColumnId={selectedColumnId}
           onColumnChange={setSelectedColumnId}
-          onClose={() => { setShowAddTaskDrawer(false); setSelectedColumnId(null); }}
+          onClose={() => {
+            setShowAddTaskDrawer(false);
+            setSelectedColumnId(null);
+          }}
           onSave={handleAddTask}
         />
       )}

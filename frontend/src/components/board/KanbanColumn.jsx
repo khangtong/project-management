@@ -8,11 +8,28 @@ import { taskApi } from "../../api/tasks";
 import { useConfirm } from "../ui/ConfirmDialog";
 
 const COLUMN_ACCENT_COLORS = {
-  "To Do": "#6CC4A1",
+  "To Do":      "#6CC4A1",
   "In Progress": "#4CACBC",
-  "In Review": "#A0D995",
-  Done: "#F6E3C5",
+  "In Review":  "#A0D995",
+  "Done":       "#F6E3C5",
 };
+
+// Deterministic color for custom columns derived from the column ID
+const CUSTOM_COLORS = [
+  "#818cf8", "#fb923c", "#f472b6", "#34d399",
+  "#60a5fa", "#a78bfa", "#facc15", "#2dd4bf",
+];
+
+function columnAccentColor(column) {
+  // Use the stored color if one was explicitly set
+  if (column.color) return column.color;
+  // Fall back to the named-column map
+  if (COLUMN_ACCENT_COLORS[column.name]) return COLUMN_ACCENT_COLORS[column.name];
+  // Deterministic fallback for any unrecognised custom column
+  let hash = 0;
+  for (let i = 0; i < column.id.length; i++) hash = column.id.charCodeAt(i) + ((hash << 5) - hash);
+  return CUSTOM_COLORS[Math.abs(hash) % CUSTOM_COLORS.length];
+}
 
 export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin = false }) {
   const { setNodeRef: setColumnRef, isOver } = useDroppable({
@@ -28,7 +45,7 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
   const [editName, setEditName] = useState(column.name);
   const [confirm, ConfirmDialog] = useConfirm();
 
-  const accentColor = COLUMN_ACCENT_COLORS[column.name] || "#6CC4A1";
+  const accentColor = columnAccentColor(column);
   const isDone = column.name === "Done";
 
   const createTaskMutation = useMutation({

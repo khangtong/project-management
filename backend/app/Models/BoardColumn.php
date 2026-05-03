@@ -10,7 +10,7 @@ class BoardColumn extends Model
 {
     use HasFactory, HasUuids;
 
-    protected $fillable = ['board_id', 'name', 'position'];
+    protected $fillable = ['board_id', 'name', 'position', 'color'];
 
     public function board()
     {

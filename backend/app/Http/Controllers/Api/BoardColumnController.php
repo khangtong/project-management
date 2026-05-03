@@ -18,14 +18,16 @@ class BoardColumnController extends Controller
         abort_if(!$board, 404, 'Board not found.');
 
         $data = $request->validate([
-            'name' => 'required|string|max:255',
+            'name'  => 'required|string|max:255',
+            'color' => 'nullable|string|max:20',
         ]);
 
         $position = $board->columns()->max('position') + 1;
 
         $column = BoardColumn::create([
             'board_id' => $board->id,
-            'name' => $data['name'],
+            'name'     => $data['name'],
+            'color'    => $data['color'] ?? null,
             'position' => $position,
         ]);
 
