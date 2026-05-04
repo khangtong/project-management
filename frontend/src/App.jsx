@@ -9,6 +9,7 @@ import BoardPage from './pages/BoardPage';
 import MyTasksPage from './pages/MyTasksPage';
 import DashboardPage from './pages/DashboardPage';
 import InvitationPage from './pages/InvitationPage';
+import ProfilePage from './pages/ProfilePage';
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/projects/:projectId/board" element={<BoardPage />} />
         <Route path="/my-tasks" element={<MyTasksPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Route>
     </Routes>
   );

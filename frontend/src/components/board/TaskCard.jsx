@@ -5,6 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { taskApi } from "../../api/tasks";
 import { useConfirm } from "../ui/ConfirmDialog";
+import UserAvatar from "../ui/UserAvatar";
 
 export const PRIORITY_STYLES = {
   low: "bg-gray-100 text-gray-600 border-gray-200",
@@ -116,13 +117,14 @@ export default function TaskCard({
         <div className="mt-2 flex items-center justify-between">
           <div className="flex -space-x-1.5">
             {task.assignees?.slice(0, 3).map((assignee) => (
-              <div
+              <UserAvatar
                 key={assignee.id}
-                className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] font-medium text-white bg-mint"
-                title={assignee.name}
-              >
-                {assignee.name?.[0]?.toUpperCase() || "?"}
-              </div>
+                user={assignee}
+                size="w-6 h-6"
+                textSize="text-[10px]"
+                rounded="rounded-full"
+                className="border-2 border-white"
+              />
             ))}
             {task.assignees?.length > 3 && (
               <div className="w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-[10px] bg-cream text-gray-medium">

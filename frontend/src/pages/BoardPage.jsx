@@ -19,6 +19,7 @@ import { boardApi } from "../api/boards";
 import { workspaceApi } from "../api/workspaces";
 import { attachmentApi } from "../api/attachments";
 import { useAuth } from "../store/AuthContext";
+import UserAvatar from "../components/ui/UserAvatar";
 
 // ── Filter panel ──────────────────────────────────────────────────────────────
 const PRIORITIES = ["low", "medium", "high", "urgent"];
@@ -196,13 +197,13 @@ function FilterDropdown({
                         : "hover:bg-cream-light text-charcoal border border-transparent"
                     }`}
                   >
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0 ${
-                        active ? "bg-ocean" : "bg-mint"
-                      }`}
-                    >
-                      {name[0]?.toUpperCase()}
-                    </div>
+                    <UserAvatar
+                      user={m.user}
+                      size="w-7 h-7"
+                      textSize="text-xs"
+                      rounded="rounded-full"
+                      className="shrink-0"
+                    />
                     <span className="flex-1 text-left truncate font-medium">
                       {name}
                     </span>
@@ -398,7 +399,7 @@ function AddColumnDropdown({ onAdd, isPending, onClose }) {
         {/* Name input */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-gray-medium uppercase tracking-wide mb-1.5">
+            <label className="block text-xs font-semibold text-gray-medium uppercase tracking-wide mb-1">
               Column Name
             </label>
             <div className="relative">
@@ -460,27 +461,6 @@ function AddColumnDropdown({ onAdd, isPending, onClose }) {
             </div>
           </div>
 
-          {/* Preview pill */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cream-light">
-            <div
-              className="w-1 h-5 rounded-full"
-              style={{ backgroundColor: color }}
-            />
-            <span className="text-sm font-medium text-charcoal truncate">
-              {name || (
-                <span className="text-gray-medium italic">
-                  Column name preview
-                </span>
-              )}
-            </span>
-            <span
-              className="ml-auto text-xs px-1.5 py-0.5 rounded-full text-white font-medium"
-              style={{ backgroundColor: color }}
-            >
-              0
-            </span>
-          </div>
-
           {/* Actions */}
           <div className="flex gap-2 pt-1">
             <button
@@ -533,18 +513,6 @@ function AddColumnDropdown({ onAdd, isPending, onClose }) {
               Cancel
             </button>
           </div>
-
-          <p className="text-[10px] text-gray-medium text-center">
-            Press{" "}
-            <kbd className="px-1 py-0.5 rounded bg-cream-light border border-cream-border font-mono text-[10px]">
-              ↵
-            </kbd>{" "}
-            to add ·{" "}
-            <kbd className="px-1 py-0.5 rounded bg-cream-light border border-cream-border font-mono text-[10px]">
-              Esc
-            </kbd>{" "}
-            to cancel
-          </p>
         </form>
       </div>
     </div>
@@ -764,13 +732,14 @@ export default function BoardPage() {
           {members.length > 0 && (
             <div className="flex -space-x-2">
               {members.slice(0, 5).map((member) => (
-                <div
+                <UserAvatar
                   key={member.id}
-                  className="w-8 h-8 rounded-full border-2 border-cream flex items-center justify-center text-xs font-medium text-white bg-mint"
-                  title={member.user?.name}
-                >
-                  {member.user?.name?.[0]?.toUpperCase() || "?"}
-                </div>
+                  user={member.user}
+                  size="w-8 h-8"
+                  textSize="text-xs"
+                  rounded="rounded-full"
+                  className="border-2 border-cream"
+                />
               ))}
               {members.length > 5 && (
                 <div className="w-8 h-8 rounded-full border-2 border-cream flex items-center justify-center text-xs font-medium bg-cream-dark text-charcoal">

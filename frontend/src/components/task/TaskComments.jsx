@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import { commentApi } from "../../api/comments";
 import { useAuth } from "../../store/AuthContext";
 import { useConfirm } from "../ui/ConfirmDialog";
+import UserAvatar from "../ui/UserAvatar";
 
 // Stable avatar color derived from user id/name so each user always gets the same color
 const AVATAR_COLORS = [
@@ -175,12 +176,13 @@ export default function TaskComments({ taskId, comments = [] }) {
                   {/* Avatar — only shown for first message in a streak */}
                   <div className="w-7 shrink-0 flex flex-col items-center">
                     {showAvatar ? (
-                      <div
-                        className={`mt-5 w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white ${color} shrink-0`}
-                        title={comment.user?.name}
-                      >
-                        {comment.user?.name?.[0]?.toUpperCase() || "?"}
-                      </div>
+                      <UserAvatar
+                        user={comment.user}
+                        size="w-7 h-7"
+                        textSize="text-xs"
+                        rounded="rounded-full"
+                        className="mt-5 shrink-0"
+                      />
                     ) : (
                       <div className="w-7" />
                     )}
@@ -313,11 +315,13 @@ export default function TaskComments({ taskId, comments = [] }) {
         <div className="border-t border-cream-border pt-4">
           <div className="flex gap-2.5 items-center">
             {/* Current user avatar */}
-            <div
-              className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white ${avatarColor(user?.id || user?.name || "")} shrink-0 mb-0.5`}
-            >
-              {user?.name?.[0]?.toUpperCase() || "?"}
-            </div>
+            <UserAvatar
+              user={user}
+              size="w-7 h-7"
+              textSize="text-xs"
+              rounded="rounded-full"
+              className="shrink-0 mb-0.5"
+            />
 
             {/* Input + send */}
             <div className="flex-1 relative">

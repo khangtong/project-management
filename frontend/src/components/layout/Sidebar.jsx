@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../../store/AuthContext";
 import { workspaceApi } from "../../api/workspaces";
 import { projectApi } from "../../api/projects";
+import UserAvatar from "../ui/UserAvatar";
 
 export default function Sidebar({ onClose }) {
   const navigate = useNavigate();
@@ -154,18 +155,8 @@ export default function Sidebar({ onClose }) {
               to="/my-tasks"
               className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/50 transition-colors text-sm text-charcoal"
             >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                />
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
               My Tasks
             </Link>
@@ -174,36 +165,34 @@ export default function Sidebar({ onClose }) {
       </div>
 
       {/* User section */}
-      <div className="p-4 border-t border-cream-border">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium text-white bg-mint">
-            {user?.name?.[0]?.toUpperCase() || "?"}
-          </div>
+      <div className="p-3 border-t border-cream-border">
+        <Link
+          to="/profile"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/60 transition-colors group mb-1"
+        >
+          {/* Avatar — uses UserAvatar so avatar_url is respected */}
+          <UserAvatar user={user} size="w-9 h-9" textSize="text-sm" rounded="rounded-xl" className="shrink-0 shadow-sm" />
+
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate text-charcoal">
-              {user?.name || "User"}
-            </p>
-            <p className="text-xs truncate text-gray-medium">
-              {user?.email || ""}
-            </p>
+            <p className="text-sm font-semibold truncate text-charcoal leading-tight">{user?.name || "User"}</p>
+            <p className="text-xs truncate text-gray-medium leading-tight mt-0.5">{user?.email || ""}</p>
           </div>
-        </div>
+
+          {/* Profile hint */}
+          <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-[10px] text-ocean font-medium">Profile</span>
+            <svg className="w-3 h-3 text-ocean" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </Link>
+
         <button
           onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-md transition-colors text-sm hover:bg-white/50 text-gray-medium"
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl transition-colors text-sm hover:bg-red-50 hover:text-red-500 text-gray-medium"
         >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-            />
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
           Sign out
         </button>
