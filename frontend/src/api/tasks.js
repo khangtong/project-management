@@ -11,6 +11,11 @@ export const taskApi = {
     assign:     (taskId, userId) => api.post(`/tasks/${taskId}/assignees`, { user_id: userId }),
     unassign:   (taskId, userId) => api.delete(`/tasks/${taskId}/assignees/${userId}`),
     getActivity:(taskId) => api.get(`/tasks/${taskId}/activity`),
+    dependencies: {
+        list: (taskId) => api.get(`/tasks/${taskId}/dependencies`),
+        create: (taskId, blockingTaskId) => api.post(`/tasks/${taskId}/dependencies`, { blocking_task_id: blockingTaskId }),
+        delete: (taskId, blockingTaskId) => api.delete(`/tasks/${taskId}/dependencies/${blockingTaskId}`),
+    },
     column: {
         create: (projectId, data) => api.post(`/projects/${projectId}/board/columns`, data),
         update: (columnId, data) => api.patch(`/columns/${columnId}`, data),

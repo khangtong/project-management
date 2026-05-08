@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Builder;
 
 class Task extends Model
 {
@@ -16,7 +17,11 @@ class Task extends Model
         'position', 'priority', 'due_date', 'created_by',
     ];
 
-    protected $casts = ['due_date' => 'date'];
+    protected $casts = [
+        'due_date' => 'date',
+    ];
+
+    protected $appends = ['is_blocked'];
 
     const PRIORITY_LOW    = 'low';
     const PRIORITY_MEDIUM = 'medium';
@@ -58,6 +63,31 @@ class Task extends Model
         return $this->morphMany(ActivityLog::class, 'entity');
     }
 
+    public function blockingDependencies()
+    {
+        return $this->hasMany(TaskDependency::class, 'blocked_task_id');
+    }
+
+    public function blockedByTasks()
+    {
+        return $this->belongsToMany(
+            Task::class,
+            'task_dependencies',
+            'blocked_task_id',
+            'blocking_task_id'
+        );
+    }
+
+    public function dependentTasks()
+    {
+        return $this->belongsToMany(
+            Task::class,
+            'task_dependencies',
+            'blocking_task_id',
+            'blocked_task_id'
+        );
+    }
+
     public function scopeByPriority($query, string $priority)
     {
         return $query->where('priority', $priority);
@@ -71,5 +101,33 @@ class Task extends Model
     public function scopeAssignedTo($query, $userId)
     {
         return $query->whereHas('assignees', fn($q) => $q->where('users.id', $userId));
+    }
+
+    public function scopeWithDependencySummary(Builder $query): Builder
+    {
+        return $query
+            ->with(['blockedByTasks:id,title,column_id', 'dependentTasks:id,title,column_id'])
+            ->withCount(['blockingDependencies as blocking_dependencies_count'])
+            ->withCount([
+                'blockingDependencies as open_blocking_dependencies_count' => function ($dependencyQuery) {
+                    $dependencyQuery
+                        ->whereHas('blockingTask.column', function ($columnQuery) {
+                            $columnQuery->whereRaw('LOWER(name) != ?', ['done']);
+                        });
+                },
+            ]);
+    }
+
+    public function getIsBlockedAttribute(): bool
+    {
+        if (array_key_exists('open_blocking_dependencies_count', $this->attributes)) {
+            return (int) $this->attributes['open_blocking_dependencies_count'] > 0;
+        }
+
+        return $this->blockingDependencies()
+            ->whereHas('blockingTask.column', function ($query) {
+                $query->whereRaw('LOWER(name) != ?', ['done']);
+            })
+            ->exists();
     }
 }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "../store/AuthContext";
+import { useAuth } from "../store/useAuth";
 import { workspaceApi } from "../api/workspaces";
 
 /**

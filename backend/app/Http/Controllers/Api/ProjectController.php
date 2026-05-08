@@ -58,7 +58,7 @@ class ProjectController extends Controller
 
     public function update(Request $request, Project $project)
     {
-        $this->authorizeProjectAccess($project);
+        $this->authorizeProjectAdmin($project);
 
         $data = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -73,7 +73,7 @@ class ProjectController extends Controller
 
     public function destroy(Project $project)
     {
-        $this->authorizeProjectOwner($project);
+        $this->authorizeProjectAdmin($project);
         $project->delete();
         return response()->json(['message' => 'Project deleted.']);
     }
@@ -105,7 +105,7 @@ class ProjectController extends Controller
         );
     }
 
-    private function authorizeProjectOwner(Project $project)
+    private function authorizeProjectAdmin(Project $project)
     {
         $workspace = $project->workspace;
         $userId = auth()->id();

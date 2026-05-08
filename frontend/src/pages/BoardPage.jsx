@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import {
@@ -18,7 +18,7 @@ import { taskApi } from "../api/tasks";
 import { boardApi } from "../api/boards";
 import { workspaceApi } from "../api/workspaces";
 import { attachmentApi } from "../api/attachments";
-import { useAuth } from "../store/AuthContext";
+import { useAuth } from "../store/useAuth";
 import UserAvatar from "../components/ui/UserAvatar";
 
 // ── Filter panel ──────────────────────────────────────────────────────────────
@@ -522,8 +522,180 @@ function AddColumnDropdown({ onAdd, isPending, onClose }) {
 // ── Board page ────────────────────────────────────────────────────────────────
 const DEFAULT_FILTERS = { priorities: [], assigneeId: "", overdue: false };
 
+function normalizeFilters(filters = DEFAULT_FILTERS) {
+  return {
+    priorities: [...(filters.priorities || [])].sort(),
+    assigneeId: filters.assigneeId || "",
+    overdue: Boolean(filters.overdue),
+  };
+}
+
+function sameFilters(a, b) {
+  const left = normalizeFilters(a);
+  const right = normalizeFilters(b);
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function BoardViewsDropdown({
+  views,
+  selectedViewId,
+  filters,
+  onApply,
+  onCreate,
+  onRename,
+  onDelete,
+  isCreating,
+  onClose,
+}) {
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  const [name, setName] = useState("");
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const handleCreate = (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onCreate(name.trim(), filters);
+    setName("");
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-full right-0 mt-2 z-50 w-96 bg-white rounded-2xl shadow-xl border border-cream-border overflow-hidden"
+      style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}
+    >
+      <div className="flex items-center justify-between px-4 py-3 border-b border-cream-border">
+        <span className="text-sm font-semibold text-charcoal">Saved Views</span>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-lg text-gray-medium hover:bg-gray-200 transition-colors"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <div className="max-h-[60vh] overflow-y-auto">
+        <div className="p-4 border-b border-cream-border bg-cream-light/40">
+          <form onSubmit={handleCreate} className="flex gap-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Save current filters as..."
+              className="flex-1 px-3 py-2 rounded-xl border border-cream-border text-sm text-charcoal focus:outline-none focus:ring-2 focus:ring-ocean/30"
+            />
+            <button
+              type="submit"
+              disabled={!name.trim() || isCreating}
+              className="px-3 py-2 rounded-xl text-sm font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-40"
+            >
+              Save
+            </button>
+          </form>
+        </div>
+
+        {views.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-gray-medium">
+            No saved views yet.
+          </div>
+        ) : (
+          views.map((view) => {
+            const active = selectedViewId === view.id;
+            return (
+              <div
+                key={view.id}
+                className={`flex items-center gap-2 px-4 py-3 border-b border-cream-border/50 hover:bg-cream/40 ${active ? "bg-ocean/5" : ""}`}
+              >
+                <button
+                  onClick={() => onApply(view)}
+                  className="flex-1 min-w-0 text-left"
+                >
+                  <p
+                    className={`text-sm font-medium truncate ${active ? "text-ocean" : "text-charcoal"}`}
+                  >
+                    {view.name}
+                  </p>
+                  <p className="text-[11px] text-gray-medium mt-0.5">
+                    {view.filters?.priorities?.length || 0} priorities
+                    {view.filters?.assigneeId ? " · assignee" : ""}
+                    {view.filters?.overdue ? " · overdue" : ""}
+                  </p>
+                </button>
+                <button
+                  onClick={() => onRename(view)}
+                  className="p-1.5 rounded-lg text-gray-medium hover:text-ocean hover:bg-ocean/20 transition-colors"
+                  title="Rename"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => onDelete(view)}
+                  className="p-1.5 rounded-lg text-gray-medium hover:text-red-500 hover:bg-red-100 transition-colors"
+                  title="Delete"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function BoardPage() {
   const { projectId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -534,6 +706,7 @@ export default function BoardPage() {
   const [showAddColumn, setShowAddColumn] = useState(false);
   const [showAddTaskDrawer, setShowAddTaskDrawer] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showViews, setShowViews] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedColumnId, setSelectedColumnId] = useState(null);
 
@@ -569,6 +742,30 @@ export default function BoardPage() {
       boardId ? taskApi.list(boardId).then((r) => r.data) : Promise.resolve({}),
     enabled: !!boardId,
   });
+
+  const allBoardTasks = useMemo(
+    () => Object.values(tasksByColumn).flat(),
+    [tasksByColumn],
+  );
+  const linkedTask = useMemo(() => {
+    const taskId = searchParams.get("task");
+    if (!taskId) return null;
+    return allBoardTasks.find((item) => item.id === taskId) || null;
+  }, [allBoardTasks, searchParams]);
+
+  const { data: savedViews = [] } = useQuery({
+    queryKey: ["board-views", boardId],
+    queryFn: () =>
+      boardId
+        ? boardApi.views.list(boardId).then((r) => r.data)
+        : Promise.resolve([]),
+    enabled: !!boardId,
+  });
+  const selectedView = useMemo(
+    () => savedViews.find((view) => sameFilters(filters, view.filters)) || null,
+    [filters, savedViews],
+  );
+  const selectedViewId = selectedView?.id ?? null;
 
   // Apply filters client-side — tasks are already loaded
   const filteredTasksByColumn = useMemo(() => {
@@ -634,6 +831,42 @@ export default function BoardPage() {
     },
     onError: (err) =>
       toast.error(err.response?.data?.message || "Failed to add column"),
+  });
+
+  const createViewMutation = useMutation({
+    mutationFn: ({ name, nextFilters }) =>
+      boardApi.views.create(boardId, {
+        name,
+        filters: normalizeFilters(nextFilters),
+      }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries(["board-views", boardId]);
+      setFilters(normalizeFilters(response.data.filters));
+      toast.success("View saved");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to save view"),
+  });
+
+  const updateViewMutation = useMutation({
+    mutationFn: ({ viewId, data }) =>
+      boardApi.views.update(boardId, viewId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["board-views", boardId]);
+      toast.success("View updated");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to update view"),
+  });
+
+  const deleteViewMutation = useMutation({
+    mutationFn: (viewId) => boardApi.views.delete(boardId, viewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["board-views", boardId]);
+      toast.success("View deleted");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to delete view"),
   });
 
   const handleAddTask = (
@@ -751,6 +984,70 @@ export default function BoardPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          <div className="relative">
+            <button
+              onClick={() => setShowViews((v) => !v)}
+              className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg border transition-colors ${
+                showViews || selectedViewId
+                  ? "border-ocean text-ocean bg-ocean/5"
+                  : "border-cream-border text-charcoal hover:bg-cream-light"
+              }`}
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16M4 18h10"
+                />
+              </svg>
+              {selectedViewId ? selectedView?.name || "View" : "Views"}
+            </button>
+
+            {showViews && (
+              <BoardViewsDropdown
+                views={savedViews}
+                selectedViewId={selectedViewId}
+                filters={filters}
+                isCreating={createViewMutation.isPending}
+                onApply={(view) => {
+                  setFilters(normalizeFilters(view.filters));
+                  setShowViews(false);
+                }}
+                onCreate={(name, nextFilters) =>
+                  createViewMutation.mutate({ name, nextFilters })
+                }
+                onRename={(view) => {
+                  const nextName = window.prompt(
+                    "Rename saved view",
+                    view.name,
+                  );
+                  if (
+                    nextName &&
+                    nextName.trim() &&
+                    nextName.trim() !== view.name
+                  ) {
+                    updateViewMutation.mutate({
+                      viewId: view.id,
+                      data: { name: nextName.trim() },
+                    });
+                  }
+                }}
+                onDelete={(view) => {
+                  if (window.confirm(`Delete saved view "${view.name}"?`)) {
+                    deleteViewMutation.mutate(view.id);
+                  }
+                }}
+                onClose={() => setShowViews(false)}
+              />
+            )}
+          </div>
+
           {/* Filter button with floating dropdown */}
           <div className="relative">
             <button
@@ -882,21 +1179,23 @@ export default function BoardPage() {
       </DndContext>
 
       {/* ── Task drawers ── */}
-      {selectedTask && (
+      {(selectedTask || linkedTask) && (
         <TaskDrawer
-          task={selectedTask}
-          projectId={projectId}
+          task={selectedTask || linkedTask}
           workspaceId={workspaceId}
-          isAdmin={isAdmin}
-          onClose={() => setSelectedTask(null)}
+          boardTasks={allBoardTasks}
+          onClose={() => {
+            setSelectedTask(null);
+            const nextParams = new URLSearchParams(searchParams);
+            nextParams.delete("task");
+            setSearchParams(nextParams, { replace: true });
+          }}
         />
       )}
       {showAddTaskDrawer && (
         <TaskDrawer
           task={{ title: "", priority: "medium", description: "" }}
-          projectId={projectId}
           workspaceId={workspaceId}
-          isAdmin={isAdmin}
           isCreateMode={true}
           columns={columns}
           selectedColumnId={selectedColumnId}

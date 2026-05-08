@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   format,
@@ -12,7 +12,6 @@ import {
   addDays,
 } from "date-fns";
 import { taskApi } from "../api/tasks";
-import { useAuth } from "../store/AuthContext";
 import UserAvatar from "../components/ui/UserAvatar";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -209,7 +208,6 @@ function GroupHeader({ label, count, color = "text-gray-medium", badge = "" }) {
 // ─── Task row ─────────────────────────────────────────────────────────────────
 function TaskRow({ task, isOverdue = false }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const projectId = task.column?.board?.project?.id;
   const projectName = task.column?.board?.project?.name || "Unknown project";
@@ -394,7 +392,6 @@ function EmptyState({ label }) {
 
 // ─── MyTasksPage ──────────────────────────────────────────────────────────────
 export default function MyTasksPage() {
-  const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState(null);
   const [sortBy, setSortBy] = useState("priority"); // "priority" | "due_date" | "project"
 

@@ -1,11 +1,10 @@
-import { useState, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 
 /**
  * ConfirmDialog — rendered by useConfirm hook.
  * Never use directly; use the useConfirm hook instead.
  */
-function ConfirmDialog({ title, message, confirmLabel = "Delete", confirmClass, onConfirm, onCancel }) {
+export default function ConfirmDialog({ title, message, confirmLabel = "Delete", confirmClass, onConfirm, onCancel }) {
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -55,44 +54,4 @@ function ConfirmDialog({ title, message, confirmLabel = "Delete", confirmClass, 
     </div>,
     document.body
   );
-}
-
-/**
- * useConfirm — returns [confirm, ConfirmDialogNode]
- *
- * Usage:
- *   const [confirm, ConfirmDialog] = useConfirm();
- *   // In JSX: {ConfirmDialog}
- *   // To trigger: const ok = await confirm({ title, message, confirmLabel });
- */
-export function useConfirm() {
-  const [state, setState] = useState(null);
-  const resolverRef = useRef(null);
-
-  const confirm = useCallback(({ title, message, confirmLabel, confirmClass } = {}) => {
-    return new Promise((resolve) => {
-      resolverRef.current = resolve;
-      setState({ title, message, confirmLabel, confirmClass });
-    });
-  }, []);
-
-  const handleConfirm = () => {
-    setState(null);
-    resolverRef.current?.(true);
-  };
-
-  const handleCancel = () => {
-    setState(null);
-    resolverRef.current?.(false);
-  };
-
-  const Dialog = state ? (
-    <ConfirmDialog
-      {...state}
-      onConfirm={handleConfirm}
-      onCancel={handleCancel}
-    />
-  ) : null;
-
-  return [confirm, Dialog];
 }

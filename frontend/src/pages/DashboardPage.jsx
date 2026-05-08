@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useNavigate } from "react-router-dom";
-import { format, isToday, isPast, isFuture, parseISO } from "date-fns";
+import { Link } from "react-router-dom";
+import { format, isToday, parseISO } from "date-fns";
 import { dashboardApi } from "../api/dashboard";
 import { workspaceApi } from "../api/workspaces";
-import { useAuth } from "../store/AuthContext";
+import { useAuth } from "../store/useAuth";
 import UserAvatar from "../components/ui/UserAvatar";
 
 // ─── Greeting helper ────────────────────────────────────────────────────────
@@ -58,20 +58,20 @@ function StatCard({
 
 // ─── Project progress row ─────────────────────────────────────────────────────
 function ProjectProgressRow({ project }) {
-  const done     = project.tasks_done_count  ?? 0;
-  const total    = project.tasks_total_count ?? 0;
-  const pct      = total > 0 ? Math.round((done / total) * 100) : 0;
+  const done = project.tasks_done_count ?? 0;
+  const total = project.tasks_total_count ?? 0;
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const isOnHold = project.status === "on_hold";
 
   // Mute the progress bar colour for on-hold projects
-  const barColor = isOnHold
-    ? "#B0B0B0"
-    : project.color || "#4CACBC";
+  const barColor = isOnHold ? "#B0B0B0" : project.color || "#4CACBC";
 
   return (
-    <div className={`flex items-center gap-3 py-3 border-b border-cream-card last:border-none ${
-      isOnHold ? "opacity-60" : ""
-    }`}>
+    <div
+      className={`flex items-center gap-3 py-3 border-b border-cream-card last:border-none ${
+        isOnHold ? "opacity-60" : ""
+      }`}
+    >
       <div
         className="w-2.5 h-2.5 rounded-full shrink-0"
         style={{ background: barColor }}
@@ -174,7 +174,6 @@ function FocusTaskCard({ task }) {
 // ─── Main DashboardPage ───────────────────────────────────────────────────────
 export default function DashboardPage() {
   const { user } = useAuth();
-  const navigate = useNavigate();
 
   const { data: dashData, isLoading: dashLoading } = useQuery({
     queryKey: ["dashboard"],
@@ -267,7 +266,7 @@ export default function DashboardPage() {
 
       {/* ── Focus Strip ───────────────────────────────────────────────────── */}
       {focusTasks.length > 0 && (
-        <div className="bg-gradient-to-r from-ocean/8 to-teal/8 border border-teal/25 rounded-2xl p-4 mb-5">
+        <div className="bg-linear-to-r from-ocean/8 to-teal/8 border border-teal/25 rounded-2xl p-4 mb-5">
           <p className="text-xs font-bold uppercase tracking-wider text-ocean mb-3">
             ⚡ Your focus for today
           </p>

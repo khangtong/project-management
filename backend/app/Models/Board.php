@@ -26,4 +26,9 @@ class Board extends Model
     {
         return $this->hasManyThrough(Task::class, BoardColumn::class, 'board_id', 'column_id', 'id');
     }
+
+    public function views()
+    {
+        return $this->hasMany(BoardView::class)->latest();
+    }
 }

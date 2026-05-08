@@ -8,6 +8,7 @@ use App\Models\Board;
 use App\Models\BoardColumn;
 use App\Models\Task;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TaskController extends Controller
 {
@@ -15,7 +16,10 @@ class TaskController extends Controller
     {
         $this->authorizeBoardAccess($board);
 
-        $query = $board->tasks()->with(['assignees', 'creator'])->withCount('comments');
+        $query = $board->tasks()
+            ->with(['assignees', 'creator'])
+            ->withCount('comments')
+            ->withDependencySummary();
 
         if ($request->filled('assignee_id')) {
             $query->assignedTo($request->input('assignee_id'));
@@ -72,7 +76,28 @@ class TaskController extends Controller
     public function show(Task $task)
     {
         $this->authorizeTaskAccess($task);
-        return response()->json($task->load(['assignees', 'creator', 'comments.user', 'attachments'])->loadCount('comments'));
+        return response()->json(
+            $task->load([
+                'assignees',
+                'creator',
+                'comments.user',
+                'attachments',
+                'column.board.project',
+                'blockedByTasks:id,title,column_id',
+                'blockedByTasks.column:id,name',
+                'dependentTasks:id,title,column_id',
+                'dependentTasks.column:id,name',
+            ])
+                ->loadCount('comments')
+                ->loadCount([
+                    'blockingDependencies as blocking_dependencies_count',
+                    'blockingDependencies as open_blocking_dependencies_count' => function ($query) {
+                        $query->whereHas('blockingTask.column', function ($columnQuery) {
+                            $columnQuery->whereRaw('LOWER(name) != ?', ['done']);
+                        });
+                    },
+                ])
+        );
     }
 
     public function update(Request $request, Task $task)
@@ -108,11 +133,49 @@ class TaskController extends Controller
             'position' => 'required|integer|min:0',
         ]);
 
+        $sourceColumn = $task->column;
+        $targetColumn = BoardColumn::findOrFail($data['column_id']);
+        $this->authorizeColumnAccess($targetColumn);
+
+        abort_unless(
+            $targetColumn->board_id === $sourceColumn->board_id,
+            422,
+            'Tasks can only be moved within the same board.'
+        );
+        abort_unless(
+            ! $this->isCompletingBlockedTask($task, $targetColumn),
+            422,
+            'Blocked tasks cannot be moved to Done while dependencies are still open.'
+        );
+
         $oldColumnId = $task->column_id;
-        $task->update([
-            'column_id' => $data['column_id'],
-            'position' => $data['position'],
-        ]);
+
+        DB::transaction(function () use ($task, $sourceColumn, $targetColumn, $data) {
+            $task->update(['column_id' => $targetColumn->id]);
+
+            if ($sourceColumn->id !== $targetColumn->id) {
+                $this->normalizeTaskPositions($sourceColumn);
+            }
+
+            $targetTasks = $targetColumn->tasks()
+                ->where('id', '!=', $task->id)
+                ->orderBy('position')
+                ->orderBy('created_at')
+                ->get()
+                ->values();
+
+            $position = min($data['position'], $targetTasks->count());
+            $ordered = $targetTasks->splice(0, $position)
+                ->push($task->fresh())
+                ->merge($targetTasks);
+
+            $ordered->values()->each(function (Task $orderedTask, int $index) use ($targetColumn) {
+                $orderedTask->update([
+                    'column_id' => $targetColumn->id,
+                    'position' => $index,
+                ]);
+            });
+        });
 
         ActivityLog::create([
             'user_id' => $request->user()->id,
@@ -122,7 +185,7 @@ class TaskController extends Controller
             'metadata' => ['from_column' => $oldColumnId, 'to_column' => $data['column_id']],
         ]);
 
-        return response()->json($task);
+        return response()->json($task->fresh());
     }
 
     public function destroy(Request $request, Task $task)
@@ -172,5 +235,28 @@ class TaskController extends Controller
     {
         $column = $task->column;
         $this->authorizeColumnAccess($column);
+    }
+
+    private function normalizeTaskPositions(BoardColumn $column): void
+    {
+        $column->tasks()
+            ->orderBy('position')
+            ->orderBy('created_at')
+            ->get()
+            ->values()
+            ->each(fn(Task $task, int $index) => $task->update(['position' => $index]));
+    }
+
+    private function isCompletingBlockedTask(Task $task, BoardColumn $targetColumn): bool
+    {
+        if (strtolower($targetColumn->name) !== 'done') {
+            return false;
+        }
+
+        return $task->blockingDependencies()
+            ->whereHas('blockingTask.column', function ($query) {
+                $query->whereRaw('LOWER(name) != ?', ['done']);
+            })
+            ->exists();
     }
 }

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { workspaceApi } from "../api/workspaces";
 import { projectApi } from "../api/projects";
-import { useConfirm } from "../components/ui/ConfirmDialog";
+import { useConfirm } from "../components/ui/useConfirm";
 import { EditWorkspaceModal } from "../components/ui/EditWorkspaceModal";
 import { useWorkspaceRole } from "../hooks/useWorkspaceRole";
 
@@ -20,7 +20,6 @@ const TrashIcon = () => (
 );
 
 export default function WorkspacesPage() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", description: "" });

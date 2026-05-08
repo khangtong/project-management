@@ -195,6 +195,10 @@ class WorkspaceMemberController extends Controller
             return response()->json(['message' => 'Cannot remove the owner.'], 422);
         }
 
+        if ($member->role === WorkspaceMember::ROLE_ADMIN && $workspace->owner_id !== $request->user()->id) {
+            return response()->json(['message' => 'Only the owner can remove admins.'], 403);
+        }
+
         $member->delete();
         return response()->json(['message' => 'Member removed.']);
     }

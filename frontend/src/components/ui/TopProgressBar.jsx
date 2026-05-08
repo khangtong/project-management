@@ -10,27 +10,29 @@ export default function TopProgressBar() {
   const isMutating = useIsMutating();
   const isActive = isMutating > 0;
 
-  const [width, setWidth] = useState(0);
-  const [visible, setVisible] = useState(false);
+  const [width, setWidth] = useState(() => (isActive ? 30 : 0));
+  const [visible, setVisible] = useState(() => isActive);
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    let raf;
-    let timeout;
+    let startTimer;
+    let crawlTimer;
+    let completeTimer;
+    let hideTimer;
 
     if (isActive) {
-      setFadeOut(false);
-      setVisible(true);
-      // Quickly jump to 30%, then slowly crawl to 85%
-      setWidth(30);
-      timeout = setTimeout(() => setWidth(70), 300);
-      raf = setTimeout(() => setWidth(85), 900);
+      startTimer = setTimeout(() => {
+        setFadeOut(false);
+        setVisible(true);
+        setWidth(30);
+      }, 0);
+      crawlTimer = setTimeout(() => setWidth(70), 300);
+      completeTimer = setTimeout(() => setWidth(85), 900);
     } else if (visible) {
-      // Complete the bar then fade out
-      setWidth(100);
-      timeout = setTimeout(() => {
+      startTimer = setTimeout(() => setWidth(100), 0);
+      completeTimer = setTimeout(() => {
         setFadeOut(true);
-        setTimeout(() => {
+        hideTimer = setTimeout(() => {
           setVisible(false);
           setWidth(0);
           setFadeOut(false);
@@ -39,8 +41,10 @@ export default function TopProgressBar() {
     }
 
     return () => {
-      clearTimeout(timeout);
-      clearTimeout(raf);
+      clearTimeout(startTimer);
+      clearTimeout(crawlTimer);
+      clearTimeout(completeTimer);
+      clearTimeout(hideTimer);
     };
   }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 

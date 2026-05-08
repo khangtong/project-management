@@ -28,6 +28,8 @@ class ActivityLog extends Model
     const ACTION_UNASSIGNED     = 'unassigned';
     const ACTION_COMMENTED      = 'commented';
     const ACTION_ATTACHMENT_ADD = 'attachment_added';
+    const ACTION_DEPENDENCY_ADD = 'dependency_added';
+    const ACTION_DEPENDENCY_REM = 'dependency_removed';
 
     public function entity()
     {

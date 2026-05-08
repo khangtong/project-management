@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import TaskCard from "./TaskCard";
 import { taskApi } from "../../api/tasks";
-import { useConfirm } from "../ui/ConfirmDialog";
+import { useConfirm } from "../ui/useConfirm";
 
 const COLUMN_ACCENT_COLORS = {
   "To Do":      "#6CC4A1",

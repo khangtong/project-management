@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { workspaceApi } from "../api/workspaces";
-import { useAuth } from "../store/AuthContext";
+import { useAuth } from "../store/useAuth";
 
 export default function InvitationPage() {
   const { token } = useParams();
@@ -15,6 +15,16 @@ export default function InvitationPage() {
     queryKey: ["invitation", token],
     queryFn: () => workspaceApi.showInvitation(token).then((r) => r.data),
     retry: false,
+  });
+
+  const acceptMutation = useMutation({
+    mutationFn: () => workspaceApi.acceptInvitation(token),
+    onSuccess: (res) => {
+      navigate(`/workspaces/${res.data.workspace_id}`);
+    },
+    onError: (err) => {
+      setError(err.response?.data?.message || "Failed to accept invitation");
+    },
   });
 
   // Once we know the user is not logged in, redirect to login with the
@@ -32,16 +42,6 @@ export default function InvitationPage() {
       </div>
     );
   }
-
-  const acceptMutation = useMutation({
-    mutationFn: () => workspaceApi.acceptInvitation(token),
-    onSuccess: (res) => {
-      navigate(`/workspaces/${res.data.workspace_id}`);
-    },
-    onError: (err) => {
-      setError(err.response?.data?.message || "Failed to accept invitation");
-    },
-  });
 
   if (isLoading) {
     return (

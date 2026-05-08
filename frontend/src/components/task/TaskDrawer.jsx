@@ -62,9 +62,8 @@ function cleanDescription(html) {
 // ── Main drawer ───────────────────────────────────────────────────────────────
 export default function TaskDrawer({
   task,
-  projectId,
   workspaceId,
-  isAdmin = true, // members can still edit task fields — only delete is admin-only
+  boardTasks = [],
   isCreateMode = false,
   columns = [],
   selectedColumnId,
@@ -79,6 +78,7 @@ export default function TaskDrawer({
     isCreateMode ? [] : task.assignees || [],
   );
   const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [selectedBlockingTaskId, setSelectedBlockingTaskId] = useState("");
   const syncedRef = useRef(false);
 
   const { data: fullTask, isLoading: taskLoading } = useQuery({
@@ -129,6 +129,33 @@ export default function TaskDrawer({
       toast.error(err.response?.data?.message || "Failed to save task", { id: "task-save" }),
   });
 
+  const addDependencyMutation = useMutation({
+    mutationFn: (blockingTaskId) => taskApi.dependencies.create(task.id, blockingTaskId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["task", task.id] }),
+        queryClient.refetchQueries({ queryKey: ["board-tasks"] }),
+      ]);
+      setSelectedBlockingTaskId("");
+      toast.success("Dependency added");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to add dependency"),
+  });
+
+  const removeDependencyMutation = useMutation({
+    mutationFn: (blockingTaskId) => taskApi.dependencies.delete(task.id, blockingTaskId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["task", task.id] }),
+        queryClient.refetchQueries({ queryKey: ["board-tasks"] }),
+      ]);
+      toast.success("Dependency removed");
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to remove dependency"),
+  });
+
   useEffect(() => {
     const handleKey = (e) => {
       if (e.key === "Escape") onClose?.();
@@ -148,6 +175,13 @@ export default function TaskDrawer({
       updateMutation.mutate(payload);
     }
   };
+
+  const blockedByTasks = fullTask?.blocked_by_tasks || [];
+  const dependentTasks = fullTask?.dependent_tasks || [];
+  const availableBlockingTasks = boardTasks.filter((candidate) => {
+    if (!task?.id || candidate.id === task.id) return false;
+    return !blockedByTasks.some((blockingTask) => blockingTask.id === candidate.id);
+  });
 
   return (
     <>
@@ -325,6 +359,65 @@ export default function TaskDrawer({
                     />
                   </div>
 
+                  {!isCreateMode && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <label className="block text-xs font-medium uppercase text-gray-medium">
+                            Dependencies
+                          </label>
+                          <p className="text-sm text-charcoal mt-1">
+                            {fullTask?.is_blocked
+                              ? `${fullTask.open_blocking_dependencies_count} blocking task${fullTask.open_blocking_dependencies_count === 1 ? "" : "s"} still open`
+                              : "No open blockers"}
+                          </p>
+                        </div>
+                        {fullTask?.is_blocked && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-red-50 text-red-600 border border-red-200">
+                            Blocked
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <select
+                          value={selectedBlockingTaskId}
+                          onChange={(e) => setSelectedBlockingTaskId(e.target.value)}
+                          className="flex-1 px-3 py-2 text-sm rounded-lg border border-cream-border text-charcoal"
+                        >
+                          <option value="">Select a blocking task</option>
+                          {availableBlockingTasks.map((candidate) => (
+                            <option key={candidate.id} value={candidate.id}>
+                              {candidate.title}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => addDependencyMutation.mutate(selectedBlockingTaskId)}
+                          disabled={!selectedBlockingTaskId || addDependencyMutation.isPending}
+                          className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-40"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      <DependencyList
+                        title="Blocked by"
+                        tasks={blockedByTasks}
+                        emptyLabel="No blocking tasks"
+                        onRemove={(blockingTaskId) => removeDependencyMutation.mutate(blockingTaskId)}
+                        isRemoving={removeDependencyMutation.isPending}
+                      />
+
+                      <DependencyList
+                        title="Blocking"
+                        tasks={dependentTasks}
+                        emptyLabel="No dependent tasks"
+                      />
+                    </div>
+                  )}
+
                   {/* Description */}
                   <div>
                     <label className="block text-sm font-medium mb-2 text-charcoal">
@@ -365,6 +458,7 @@ export default function TaskDrawer({
                 <div className="p-6">
                   <TaskComments
                     taskId={task.id}
+                    workspaceId={workspaceId}
                     comments={fullTask?.comments || []}
                   />
                 </div>
@@ -400,6 +494,60 @@ export default function TaskDrawer({
         </div>
       </aside>
     </>
+  );
+}
+
+function DependencyList({ title, tasks, emptyLabel, onRemove, isRemoving = false }) {
+  return (
+    <div>
+      <p className="text-xs font-medium uppercase mb-2 text-gray-medium">
+        {title}
+      </p>
+      {tasks.length === 0 ? (
+        <p className="text-sm text-gray-medium">{emptyLabel}</p>
+      ) : (
+        <div className="space-y-2">
+          {tasks.map((dependencyTask) => (
+            <div
+              key={dependencyTask.id}
+              className="flex items-center gap-3 px-3 py-2 rounded-xl border border-cream-border bg-cream-light/50"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-charcoal truncate">
+                  {dependencyTask.title}
+                </p>
+                <p className="text-xs text-gray-medium mt-0.5">
+                  {dependencyTask.column?.name || "Unknown column"}
+                </p>
+              </div>
+              {onRemove && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(dependencyTask.id)}
+                  disabled={isRemoving}
+                  className="p-1.5 rounded-lg text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                  title="Remove dependency"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

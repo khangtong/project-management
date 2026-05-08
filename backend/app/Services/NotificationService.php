@@ -38,4 +38,19 @@ class NotificationService
             ['task_id' => $taskId]
         );
     }
+
+    public static function mention(string $userId, string $taskTitle, string $taskId, string $projectId, string $commentId, string $commenterName): void
+    {
+        self::send(
+            $userId,
+            Notification::TYPE_MENTION,
+            'You were mentioned in a comment',
+            "{$commenterName} mentioned you on \"{$taskTitle}\"",
+            [
+                'task_id' => $taskId,
+                'project_id' => $projectId,
+                'comment_id' => $commentId,
+            ]
+        );
+    }
 }

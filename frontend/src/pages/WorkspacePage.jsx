@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { workspaceApi } from "../api/workspaces";
 import { projectApi } from "../api/projects";
 import { userApi } from "../api/users";
-import { useConfirm } from "../components/ui/ConfirmDialog";
+import { useConfirm } from "../components/ui/useConfirm";
 import { useWorkspaceRole } from "../hooks/useWorkspaceRole";
 
 const EditIcon = ({ className = "w-4 h-4" }) => (

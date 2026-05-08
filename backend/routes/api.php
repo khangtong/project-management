@@ -44,11 +44,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('columns/{column}', [\App\Http\Controllers\Api\BoardColumnController::class, 'destroy']);
 
     Route::get('boards/{board}/tasks', [\App\Http\Controllers\Api\TaskController::class, 'index']);
+    Route::get('boards/{board}/views', [\App\Http\Controllers\Api\BoardViewController::class, 'index']);
+    Route::post('boards/{board}/views', [\App\Http\Controllers\Api\BoardViewController::class, 'store']);
+    Route::patch('boards/{board}/views/{view}', [\App\Http\Controllers\Api\BoardViewController::class, 'update']);
+    Route::delete('boards/{board}/views/{view}', [\App\Http\Controllers\Api\BoardViewController::class, 'destroy']);
     Route::post('columns/{column}/tasks', [\App\Http\Controllers\Api\TaskController::class, 'store']);
     Route::get('tasks/{task}', [\App\Http\Controllers\Api\TaskController::class, 'show']);
     Route::patch('tasks/{task}', [\App\Http\Controllers\Api\TaskController::class, 'update']);
     Route::patch('tasks/{task}/move', [\App\Http\Controllers\Api\TaskController::class, 'move']);
     Route::delete('tasks/{task}', [\App\Http\Controllers\Api\TaskController::class, 'destroy']);
+    Route::get('tasks/{task}/dependencies', [\App\Http\Controllers\Api\TaskDependencyController::class, 'index']);
+    Route::post('tasks/{task}/dependencies', [\App\Http\Controllers\Api\TaskDependencyController::class, 'store']);
+    Route::delete('tasks/{task}/dependencies/{blockingTask}', [\App\Http\Controllers\Api\TaskDependencyController::class, 'destroy']);
 
     Route::post('tasks/{task}/assignees', [\App\Http\Controllers\Api\TaskAssigneeController::class, 'store']);
     Route::delete('tasks/{task}/assignees/{user}', [\App\Http\Controllers\Api\TaskAssigneeController::class, 'destroy']);

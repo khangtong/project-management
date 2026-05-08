@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { notificationApi } from "../../api/notifications";
 import { formatDistanceToNow } from "date-fns";
@@ -88,9 +89,25 @@ const TYPE_ICONS = {
       />
     </svg>
   ),
+  mention: (
+    <svg
+      className="w-4 h-4 text-orange-500"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M16 8a6 6 0 10-8 5.657V16a2 2 0 102 2h4a2 2 0 102-2v-2.343A6 6 0 0016 8z"
+      />
+    </svg>
+  ),
 };
 
 export default function NotificationBell() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef(null);
   const queryClient = useQueryClient();
@@ -144,6 +161,19 @@ export default function NotificationBell() {
   const unreadCount = countData?.count ?? 0;
   const items = notifications?.data ?? notifications ?? [];
 
+  const handleNotificationClick = (notification) => {
+    const projectId = notification.data?.project_id;
+    const taskId = notification.data?.task_id;
+
+    if (projectId && taskId) {
+      if (!notification.read_at) {
+        markReadMutation.mutate(notification.id);
+      }
+      setOpen(false);
+      navigate(`/projects/${projectId}/board?task=${taskId}`);
+    }
+  };
+
   return (
     <div className="relative" ref={dropdownRef}>
       <button
@@ -190,7 +220,8 @@ export default function NotificationBell() {
               items.map((n) => (
                 <div
                   key={n.id}
-                  className={`flex gap-3 px-4 py-3 border-b border-cream-border/50 hover:bg-cream-dark/30 transition-colors ${n.read_at ? "opacity-60" : ""}`}
+                  onClick={() => handleNotificationClick(n)}
+                  className={`flex gap-3 px-4 py-3 border-b border-cream-border/50 hover:bg-cream-dark/30 transition-colors ${n.read_at ? "opacity-60" : ""} ${n.data?.project_id && n.data?.task_id ? "cursor-pointer" : ""}`}
                 >
                   <div className="mt-0.5 shrink-0">
                     {TYPE_ICONS[n.type] ?? <BellIcon />}
@@ -215,7 +246,10 @@ export default function NotificationBell() {
                   <div className="shrink-0 flex flex-col items-end gap-1">
                     {!n.read_at && (
                       <button
-                        onClick={() => markReadMutation.mutate(n.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          markReadMutation.mutate(n.id);
+                        }}
                         className="p-1 rounded hover:bg-cream-border/50 text-gray-light hover:text-ocean transition-colors"
                         title="Mark as read"
                       >
@@ -223,7 +257,10 @@ export default function NotificationBell() {
                       </button>
                     )}
                     <button
-                      onClick={() => deleteMutation.mutate(n.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteMutation.mutate(n.id);
+                      }}
                       className="p-1 rounded hover:bg-cream-border/50 text-gray-light hover:text-red-400 transition-colors"
                       title="Delete"
                     >

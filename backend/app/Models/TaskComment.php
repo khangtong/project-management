@@ -11,7 +11,11 @@ class TaskComment extends Model
 {
     use HasFactory, HasUuids, SoftDeletes;
 
-    protected $fillable = ['task_id', 'user_id', 'body'];
+    protected $fillable = ['task_id', 'user_id', 'body', 'mentions'];
+
+    protected $casts = [
+        'mentions' => 'array',
+    ];
 
     public function task()
     {

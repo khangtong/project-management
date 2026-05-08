@@ -4,22 +4,9 @@ import { format } from "date-fns";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { taskApi } from "../../api/tasks";
-import { useConfirm } from "../ui/ConfirmDialog";
+import { useConfirm } from "../ui/useConfirm";
 import UserAvatar from "../ui/UserAvatar";
-
-export const PRIORITY_STYLES = {
-  low: "bg-gray-100 text-gray-600 border-gray-200",
-  medium: "bg-sage/20 text-sage border-sage",
-  high: "bg-orange-100 text-orange-700 border-orange-200",
-  urgent: "bg-red-100 text-red-600 border-red-200",
-};
-
-export const PRIORITY_LABELS = {
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  urgent: "Urgent",
-};
+import { PRIORITY_LABELS, PRIORITY_STYLES } from "./taskPriority";
 
 export default function TaskCard({
   task,
@@ -80,9 +67,24 @@ export default function TaskCard({
         onClick={() => onClick?.(task)}
         className="group p-3 cursor-grab active:cursor-grabbing transition-all hover:shadow-md bg-white rounded-xl border border-cream-border shadow-sm"
       >
-        <h4 className="text-sm font-medium leading-snug text-charcoal pr-1">
-          {task.title}
-        </h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium leading-snug text-charcoal pr-1">
+            {task.title}
+          </h4>
+          <div>
+            {task.is_blocked && (
+              <div className="mr-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-semibold bg-red-50 text-red-600 border border-red-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                Blocked
+              </div>
+            )}
+            <span
+              className={`text-xs px-2 py-0.5 rounded-full font-medium border ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}
+            >
+              {PRIORITY_LABELS[task.priority] || "Medium"}
+            </span>
+          </div>
+        </div>
 
         {task.description && (
           <p
@@ -96,12 +98,7 @@ export default function TaskCard({
           />
         )}
 
-        <div className="mt-3 flex items-center justify-between">
-          <span
-            className={`text-xs px-2 py-0.5 rounded-full font-medium border ${PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium}`}
-          >
-            {PRIORITY_LABELS[task.priority] || "Medium"}
-          </span>
+        <div className="mt-2 flex items-center justify-between">
           {task.due_date && (
             <span
               className="text-xs"

@@ -10,20 +10,7 @@
  *   className   — extra classes
  */
 
-const AVATAR_COLORS = [
-  "#4CACBC", "#6CC4A1", "#A0D995", "#818cf8",
-  "#fb923c", "#f472b6", "#a78bfa", "#34d399",
-];
-
-function avatarBg(str = "") {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-export function getAvatarBg(str = "") {
-  return avatarBg(str);
-}
+import { getAvatarBg } from "./avatar";
 
 export default function UserAvatar({
   user,
@@ -36,7 +23,7 @@ export default function UserAvatar({
   const initials = name
     ? name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
-  const bg = avatarBg(name);
+  const bg = getAvatarBg(name);
 
   if (user?.avatar_url) {
     return (

@@ -1,31 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import toast from "react-hot-toast";
 import { commentApi } from "../../api/comments";
-import { useAuth } from "../../store/AuthContext";
-import { useConfirm } from "../ui/ConfirmDialog";
+import { workspaceApi } from "../../api/workspaces";
+import { useAuth } from "../../store/useAuth";
+import { useConfirm } from "../ui/useConfirm";
 import UserAvatar from "../ui/UserAvatar";
 
-// Stable avatar color derived from user id/name so each user always gets the same color
-const AVATAR_COLORS = [
-  "bg-ocean",
-  "bg-mint",
-  "bg-sage",
-  "bg-teal",
-  "bg-purple-400",
-  "bg-amber-400",
-  "bg-pink-400",
-  "bg-indigo-400",
-];
-function avatarColor(str = "") {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++)
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-// Auto-resize textarea hook
 function useAutoResize(value) {
   const ref = useRef(null);
   useEffect(() => {
@@ -37,18 +19,115 @@ function useAutoResize(value) {
   return ref;
 }
 
-export default function TaskComments({ taskId, comments = [] }) {
+function getMentionQuery(value, cursor) {
+  const prefix = value.slice(0, cursor);
+  const match = prefix.match(/(?:^|\s)@([^\s@]*)$/);
+  return match ? match[1] : "";
+}
+
+function replaceMentionAtCursor(value, cursor, memberName) {
+  const prefix = value.slice(0, cursor);
+  const atIndex = prefix.lastIndexOf("@");
+  if (atIndex === -1) return value;
+  return `${value.slice(0, atIndex)}@${memberName} ${value.slice(cursor)}`;
+}
+
+function activeMentionIds(text, mentions) {
+  return mentions
+    .filter((mention) => text.includes(`@${mention.name}`))
+    .map((mention) => mention.id);
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function renderCommentBody(body, mentions = [], isOwn = false) {
+  if (!mentions?.length) return body;
+
+  const names = mentions
+    .map((mention) => mention.name)
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length);
+
+  if (!names.length) return body;
+
+  const parts = body.split(
+    new RegExp(`(@(?:${names.map(escapeRegex).join("|")}))`, "g"),
+  );
+
+  return parts.map((part, index) => {
+    if (!part.startsWith("@"))
+      return <span key={`${part}-${index}`}>{part}</span>;
+    return (
+      <span
+        key={`${part}-${index}`}
+        className={
+          isOwn ? "font-semibold text-white/95" : "font-semibold text-ocean"
+        }
+      >
+        {part}
+      </span>
+    );
+  });
+}
+
+function MentionList({ items, onSelect }) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="absolute left-0 right-0 bottom-full mb-2 z-20 bg-white border border-cream-border rounded-xl shadow-lg overflow-hidden">
+      {items.map((member) => (
+        <button
+          key={member.user_id}
+          type="button"
+          onClick={() => onSelect(member)}
+          className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-cream-light transition-colors"
+        >
+          <UserAvatar
+            user={member.user}
+            size="w-7 h-7"
+            textSize="text-xs"
+            rounded="rounded-full"
+          />
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-charcoal truncate">
+              {member.user?.name || "Unknown"}
+            </p>
+            <p className="text-xs text-gray-medium truncate">
+              {member.user?.email || ""}
+            </p>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function TaskComments({ taskId, workspaceId, comments = [] }) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [confirm, ConfirmDialog] = useConfirm();
   const [body, setBody] = useState("");
+  const [mentions, setMentions] = useState([]);
   const [editingId, setEditingId] = useState(null);
   const [editBody, setEditBody] = useState("");
+  const [editMentions, setEditMentions] = useState([]);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [editMentionQuery, setEditMentionQuery] = useState("");
   const inputRef = useAutoResize(body);
   const editRef = useAutoResize(editBody);
   const bottomRef = useRef(null);
 
-  // Scroll to bottom when new comments arrive
+  const { data: members = [] } = useQuery({
+    queryKey: ["workspace-members", workspaceId],
+    queryFn: () =>
+      workspaceId
+        ? workspaceApi.members.list(workspaceId).then((r) => r.data)
+        : Promise.resolve([]),
+    enabled: !!workspaceId,
+  });
+
   useEffect(() => {
     if (comments.length > 0) {
       bottomRef.current?.scrollIntoView({
@@ -63,6 +142,8 @@ export default function TaskComments({ taskId, comments = [] }) {
     onSuccess: () => {
       queryClient.invalidateQueries(["task", taskId]);
       setBody("");
+      setMentions([]);
+      setMentionQuery("");
       toast.success("Comment posted");
     },
     onError: (err) =>
@@ -74,6 +155,8 @@ export default function TaskComments({ taskId, comments = [] }) {
     onSuccess: () => {
       queryClient.invalidateQueries(["task", taskId]);
       setEditingId(null);
+      setEditMentions([]);
+      setEditMentionQuery("");
       toast.success("Comment updated");
     },
     onError: (err) =>
@@ -90,10 +173,25 @@ export default function TaskComments({ taskId, comments = [] }) {
       toast.error(err.response?.data?.message || "Failed to delete comment"),
   });
 
+  const createSuggestions = members.filter((member) => {
+    const name = member.user?.name || "";
+    if (!mentionQuery) return false;
+    return name.toLowerCase().includes(mentionQuery.toLowerCase());
+  });
+
+  const editSuggestions = members.filter((member) => {
+    const name = member.user?.name || "";
+    if (!editMentionQuery) return false;
+    return name.toLowerCase().includes(editMentionQuery.toLowerCase());
+  });
+
   const handleSubmit = (e) => {
     e?.preventDefault();
     if (!body.trim() || createMutation.isPending) return;
-    createMutation.mutate({ body: body.trim() });
+    createMutation.mutate({
+      body: body.trim(),
+      mentioned_user_ids: activeMentionIds(body, mentions),
+    });
   };
 
   const handleKeyDown = (e) => {
@@ -103,11 +201,18 @@ export default function TaskComments({ taskId, comments = [] }) {
   const handleEditStart = (comment) => {
     setEditingId(comment.id);
     setEditBody(comment.body);
+    setEditMentions(comment.mentions || []);
   };
 
   const handleEditSave = (id) => {
     if (!editBody.trim() || updateMutation.isPending) return;
-    updateMutation.mutate({ id, data: { body: editBody.trim() } });
+    updateMutation.mutate({
+      id,
+      data: {
+        body: editBody.trim(),
+        mentioned_user_ids: activeMentionIds(editBody, editMentions),
+      },
+    });
   };
 
   const handleEditKeyDown = (e, id) => {
@@ -124,12 +229,45 @@ export default function TaskComments({ taskId, comments = [] }) {
     if (ok) deleteMutation.mutate(comment.id);
   };
 
+  const handleCreateSelect = (member) => {
+    const cursor = inputRef.current?.selectionStart ?? body.length;
+    const nextBody = replaceMentionAtCursor(
+      body,
+      cursor,
+      member.user?.name || "",
+    );
+    setBody(nextBody);
+    setMentionQuery("");
+    setMentions((current) => {
+      const nextMention = { id: member.user_id, name: member.user?.name || "" };
+      if (current.some((mention) => mention.id === nextMention.id))
+        return current;
+      return [...current, nextMention];
+    });
+  };
+
+  const handleEditSelect = (member) => {
+    const cursor = editRef.current?.selectionStart ?? editBody.length;
+    const nextBody = replaceMentionAtCursor(
+      editBody,
+      cursor,
+      member.user?.name || "",
+    );
+    setEditBody(nextBody);
+    setEditMentionQuery("");
+    setEditMentions((current) => {
+      const nextMention = { id: member.user_id, name: member.user?.name || "" };
+      if (current.some((mention) => mention.id === nextMention.id))
+        return current;
+      return [...current, nextMention];
+    });
+  };
+
   return (
     <>
       {ConfirmDialog}
 
       <div className="flex flex-col gap-4">
-        {/* Comment list */}
         {comments.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 gap-3">
             <div className="w-12 h-12 rounded-full bg-cream-light flex items-center justify-center">
@@ -160,9 +298,6 @@ export default function TaskComments({ taskId, comments = [] }) {
           <div className="space-y-1 max-h-80 overflow-y-auto pr-1 scroll-smooth">
             {comments.map((comment, index) => {
               const isOwn = comment.user?.id === user?.id;
-              const color = avatarColor(
-                comment.user?.id || comment.user?.name || "",
-              );
               const isEditing = editingId === comment.id;
               const showAvatar =
                 index === 0 ||
@@ -171,9 +306,8 @@ export default function TaskComments({ taskId, comments = [] }) {
               return (
                 <div
                   key={comment.id}
-                  className={`flex gap-3 group ${isOwn ? "flex-row-reverse" : ""}`}
+                  className={`flex gap-3 group ${isOwn ? "flex-row-reverse" : "mb-5"}`}
                 >
-                  {/* Avatar — only shown for first message in a streak */}
                   <div className="w-7 shrink-0 flex flex-col items-center">
                     {showAvatar ? (
                       <UserAvatar
@@ -191,7 +325,6 @@ export default function TaskComments({ taskId, comments = [] }) {
                   <div
                     className={`flex-1 min-w-0 ${isOwn ? "flex flex-col items-end" : ""}`}
                   >
-                    {/* Name + timestamp — only shown for first in streak */}
                     {showAvatar && (
                       <div
                         className={`flex items-baseline gap-2 mb-1 ${isOwn ? "flex-row-reverse" : ""}`}
@@ -210,18 +343,31 @@ export default function TaskComments({ taskId, comments = [] }) {
                       </div>
                     )}
 
-                    {/* Bubble */}
                     {isEditing ? (
                       <div className="w-full space-y-2">
-                        <textarea
-                          ref={editRef}
-                          value={editBody}
-                          onChange={(e) => setEditBody(e.target.value)}
-                          onKeyDown={(e) => handleEditKeyDown(e, comment.id)}
-                          rows={2}
-                          className="w-full px-3 py-2 text-sm rounded-xl border border-ocean bg-white text-charcoal resize-none focus:outline-none focus:ring-2 focus:ring-ocean/30"
-                          autoFocus
-                        />
+                        <div className="relative">
+                          <MentionList
+                            items={editSuggestions}
+                            onSelect={handleEditSelect}
+                          />
+                          <textarea
+                            ref={editRef}
+                            value={editBody}
+                            onChange={(e) => {
+                              setEditBody(e.target.value);
+                              setEditMentionQuery(
+                                getMentionQuery(
+                                  e.target.value,
+                                  e.target.selectionStart,
+                                ),
+                              );
+                            }}
+                            onKeyDown={(e) => handleEditKeyDown(e, comment.id)}
+                            rows={2}
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-ocean bg-white text-charcoal resize-none focus:outline-none focus:ring-2 focus:ring-ocean/30"
+                            autoFocus
+                          />
+                        </div>
                         <div className="flex gap-2 justify-end">
                           <button
                             onClick={() => setEditingId(null)}
@@ -240,7 +386,7 @@ export default function TaskComments({ taskId, comments = [] }) {
                           </button>
                         </div>
                         <p className="text-[10px] text-gray-medium text-right">
-                          ⌘↵ to save · Esc to cancel
+                          @ to mention · ⌘↵ to save
                         </p>
                       </div>
                     ) : (
@@ -254,10 +400,13 @@ export default function TaskComments({ taskId, comments = [] }) {
                               : "bg-cream-light text-charcoal rounded-tl-sm border border-cream-border"
                           }`}
                         >
-                          {comment.body}
+                          {renderCommentBody(
+                            comment.body,
+                            comment.mentions,
+                            isOwn,
+                          )}
                         </div>
 
-                        {/* Action buttons — own comments only, shown on hover */}
                         {isOwn && (
                           <div className="flex gap-1 mt-1 justify-end opacity-0 group-hover:opacity-100 transition-opacity">
                             <button
@@ -311,10 +460,8 @@ export default function TaskComments({ taskId, comments = [] }) {
           </div>
         )}
 
-        {/* Compose area */}
         <div className="border-t border-cream-border pt-4">
           <div className="flex gap-2.5 items-center">
-            {/* Current user avatar */}
             <UserAvatar
               user={user}
               size="w-7 h-7"
@@ -323,12 +470,20 @@ export default function TaskComments({ taskId, comments = [] }) {
               className="shrink-0 mb-0.5"
             />
 
-            {/* Input + send */}
             <div className="flex-1 relative">
+              <MentionList
+                items={createSuggestions}
+                onSelect={handleCreateSelect}
+              />
               <textarea
                 ref={inputRef}
                 value={body}
-                onChange={(e) => setBody(e.target.value)}
+                onChange={(e) => {
+                  setBody(e.target.value);
+                  setMentionQuery(
+                    getMentionQuery(e.target.value, e.target.selectionStart),
+                  );
+                }}
                 onKeyDown={handleKeyDown}
                 placeholder="Write a comment…"
                 rows={1}
@@ -373,7 +528,9 @@ export default function TaskComments({ taskId, comments = [] }) {
               </button>
             </div>
           </div>
-          <p className="text-[10px] text-gray-medium mt-1.5 ml-9">⌘↵ to send</p>
+          <p className="text-[10px] text-gray-medium mt-1.5 ml-9">
+            @ to mention · ⌘↵ to send
+          </p>
         </div>
       </div>
     </>

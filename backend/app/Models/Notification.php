@@ -14,6 +14,7 @@ class Notification extends Model
 
     const TYPE_TASK_ASSIGNED = 'task_assigned';
     const TYPE_COMMENT_ADDED = 'comment_added';
+    const TYPE_MENTION = 'mention';
 
     public function user()
     {

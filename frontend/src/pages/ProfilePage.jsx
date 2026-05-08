@@ -1,10 +1,10 @@
 import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { useAuth } from "../store/AuthContext";
+import { useAuth } from "../store/useAuth";
 import { authApi } from "../api/auth";
 import UserAvatar from "../components/ui/UserAvatar";
-import { useConfirm } from "../components/ui/ConfirmDialog";
+import { useConfirm } from "../components/ui/useConfirm";
 
 // ── Reusable primitives ───────────────────────────────────────────────────────
 function Section({ title, description, children }) {

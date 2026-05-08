@@ -7,6 +7,7 @@ use App\Models\Board;
 use App\Models\BoardColumn;
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class BoardColumnController extends Controller
 {
@@ -61,9 +62,22 @@ class BoardColumnController extends Controller
             'columns.*.position' => 'required|integer|min:0',
         ]);
 
-        foreach ($data['columns'] as $item) {
-            BoardColumn::where('id', $item['id'])->update(['position' => $item['position']]);
-        }
+        $columnIds = collect($data['columns'])->pluck('id');
+        $columns = BoardColumn::whereIn('id', $columnIds)->get()->keyBy('id');
+
+        $boardIds = $columns->pluck('board_id')->unique();
+        abort_unless($boardIds->count() === 1, 422, 'Columns must belong to the same board.');
+
+        $columns->each(fn(BoardColumn $column) => $this->authorizeColumnAccess($column));
+
+        $orderedColumns = collect($data['columns'])
+            ->sortBy('position')
+            ->values()
+            ->map(fn(array $item) => $columns[$item['id']]);
+
+        DB::transaction(function () use ($orderedColumns) {
+            $orderedColumns->each(fn(BoardColumn $column, int $index) => $column->update(['position' => $index]));
+        });
 
         return response()->json(['message' => 'Columns reordered.']);
     }
