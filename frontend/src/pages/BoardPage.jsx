@@ -20,6 +20,8 @@ import { workspaceApi } from "../api/workspaces";
 import { attachmentApi } from "../api/attachments";
 import { useAuth } from "../store/useAuth";
 import UserAvatar from "../components/ui/UserAvatar";
+import { useConfirm } from "../components/ui/useConfirm";
+import { useRename } from "../components/ui/useRename";
 
 // ── Filter panel ──────────────────────────────────────────────────────────────
 const PRIORITIES = ["low", "medium", "high", "urgent"];
@@ -709,6 +711,8 @@ export default function BoardPage() {
   const [showViews, setShowViews] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [selectedColumnId, setSelectedColumnId] = useState(null);
+  const [confirm, ConfirmDialog] = useConfirm();
+  const [rename, RenameDialog] = useRename();
 
   const { data: board, isLoading } = useQuery({
     queryKey: ["board", projectId],
@@ -1022,26 +1026,26 @@ export default function BoardPage() {
                 onCreate={(name, nextFilters) =>
                   createViewMutation.mutate({ name, nextFilters })
                 }
-                onRename={(view) => {
-                  const nextName = window.prompt(
-                    "Rename saved view",
-                    view.name,
-                  );
-                  if (
-                    nextName &&
-                    nextName.trim() &&
-                    nextName.trim() !== view.name
-                  ) {
+                onRename={async (view) => {
+                  const nextName = await rename({
+                    title: "Rename Saved View",
+                    initialValue: view.name,
+                    placeholder: "Enter a view name…",
+                  });
+                  if (nextName && nextName !== view.name) {
                     updateViewMutation.mutate({
                       viewId: view.id,
-                      data: { name: nextName.trim() },
+                      data: { name: nextName },
                     });
                   }
                 }}
-                onDelete={(view) => {
-                  if (window.confirm(`Delete saved view "${view.name}"?`)) {
-                    deleteViewMutation.mutate(view.id);
-                  }
+                onDelete={async (view) => {
+                  const ok = await confirm({
+                    title: "Delete Saved View",
+                    message: `"${view.name}" will be permanently deleted.`,
+                    confirmLabel: "Delete",
+                  });
+                  if (ok) deleteViewMutation.mutate(view.id);
                 }}
                 onClose={() => setShowViews(false)}
               />
@@ -1192,6 +1196,8 @@ export default function BoardPage() {
           }}
         />
       )}
+      {ConfirmDialog}
+      {RenameDialog}
       {showAddTaskDrawer && (
         <TaskDrawer
           task={{ title: "", priority: "medium", description: "" }}

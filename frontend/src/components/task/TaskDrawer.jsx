@@ -79,6 +79,7 @@ export default function TaskDrawer({
   );
   const [pendingAttachments, setPendingAttachments] = useState([]);
   const [selectedBlockingTaskId, setSelectedBlockingTaskId] = useState("");
+  const [showDependencyPicker, setShowDependencyPicker] = useState(false);
   const syncedRef = useRef(false);
 
   const { data: fullTask, isLoading: taskLoading } = useQuery({
@@ -105,10 +106,10 @@ export default function TaskDrawer({
   const updateMutation = useMutation({
     mutationFn: async (data) => {
       await taskApi.update(task.id, data);
-      const savedIds   = (fullTask?.assignees || []).map((a) => a.id);
+      const savedIds = (fullTask?.assignees || []).map((a) => a.id);
       const pendingIds = pendingAssignees.map((a) => a.id);
-      const toAdd      = pendingIds.filter((id) => !savedIds.includes(id));
-      const toRemove   = savedIds.filter((id) => !pendingIds.includes(id));
+      const toAdd = pendingIds.filter((id) => !savedIds.includes(id));
+      const toRemove = savedIds.filter((id) => !pendingIds.includes(id));
       await Promise.all(toAdd.map((id) => taskApi.assign(task.id, id)));
       await Promise.all(toRemove.map((id) => taskApi.unassign(task.id, id)));
       for (const file of pendingAttachments) {
@@ -126,11 +127,14 @@ export default function TaskDrawer({
       toast.success("Task saved", { id: "task-save" });
     },
     onError: (err) =>
-      toast.error(err.response?.data?.message || "Failed to save task", { id: "task-save" }),
+      toast.error(err.response?.data?.message || "Failed to save task", {
+        id: "task-save",
+      }),
   });
 
   const addDependencyMutation = useMutation({
-    mutationFn: (blockingTaskId) => taskApi.dependencies.create(task.id, blockingTaskId),
+    mutationFn: (blockingTaskId) =>
+      taskApi.dependencies.create(task.id, blockingTaskId),
     onSuccess: async () => {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["task", task.id] }),
@@ -144,7 +148,8 @@ export default function TaskDrawer({
   });
 
   const removeDependencyMutation = useMutation({
-    mutationFn: (blockingTaskId) => taskApi.dependencies.delete(task.id, blockingTaskId),
+    mutationFn: (blockingTaskId) =>
+      taskApi.dependencies.delete(task.id, blockingTaskId),
     onSuccess: async () => {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["task", task.id] }),
@@ -180,7 +185,9 @@ export default function TaskDrawer({
   const dependentTasks = fullTask?.dependent_tasks || [];
   const availableBlockingTasks = boardTasks.filter((candidate) => {
     if (!task?.id || candidate.id === task.id) return false;
-    return !blockedByTasks.some((blockingTask) => blockingTask.id === candidate.id);
+    return !blockedByTasks.some(
+      (blockingTask) => blockingTask.id === candidate.id,
+    );
   });
 
   return (
@@ -379,34 +386,27 @@ export default function TaskDrawer({
                         )}
                       </div>
 
-                      <div className="flex gap-2">
-                        <select
-                          value={selectedBlockingTaskId}
-                          onChange={(e) => setSelectedBlockingTaskId(e.target.value)}
-                          className="flex-1 px-3 py-2 text-sm rounded-lg border border-cream-border text-charcoal"
-                        >
-                          <option value="">Select a blocking task</option>
-                          {availableBlockingTasks.map((candidate) => (
-                            <option key={candidate.id} value={candidate.id}>
-                              {candidate.title}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => addDependencyMutation.mutate(selectedBlockingTaskId)}
-                          disabled={!selectedBlockingTaskId || addDependencyMutation.isPending}
-                          className="px-3 py-2 rounded-lg text-sm font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-40"
-                        >
-                          Add
-                        </button>
-                      </div>
+                      <DependencyTaskPicker
+                        availableTasks={availableBlockingTasks}
+                        selectedId={selectedBlockingTaskId}
+                        onSelect={setSelectedBlockingTaskId}
+                        show={showDependencyPicker}
+                        onToggle={() => setShowDependencyPicker((v) => !v)}
+                        onClose={() => setShowDependencyPicker(false)}
+                        onAdd={() => {
+                          addDependencyMutation.mutate(selectedBlockingTaskId);
+                          setShowDependencyPicker(false);
+                        }}
+                        isAdding={addDependencyMutation.isPending}
+                      />
 
                       <DependencyList
                         title="Blocked by"
                         tasks={blockedByTasks}
                         emptyLabel="No blocking tasks"
-                        onRemove={(blockingTaskId) => removeDependencyMutation.mutate(blockingTaskId)}
+                        onRemove={(blockingTaskId) =>
+                          removeDependencyMutation.mutate(blockingTaskId)
+                        }
                         isRemoving={removeDependencyMutation.isPending}
                       />
 
@@ -497,7 +497,362 @@ export default function TaskDrawer({
   );
 }
 
-function DependencyList({ title, tasks, emptyLabel, onRemove, isRemoving = false }) {
+// ── Dependency task picker ───────────────────────────────────────────────────
+const PRIORITY_BADGE = {
+  low: { dot: "bg-gray-400", label: "Low", text: "text-gray-500" },
+  medium: { dot: "bg-sage", label: "Med", text: "text-sage" },
+  high: { dot: "bg-orange-500", label: "High", text: "text-orange-600" },
+  urgent: { dot: "bg-red-500", label: "Urgent", text: "text-red-600" },
+};
+
+function DependencyTaskPicker({
+  availableTasks,
+  selectedId,
+  onSelect,
+  show,
+  onToggle,
+  onClose,
+  onAdd,
+  isAdding,
+}) {
+  const [query, setQuery] = useState("");
+  const dropdownRef = useRef(null);
+  const searchRef = useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target))
+        onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  // Focus search when opened
+  useEffect(() => {
+    if (show) setTimeout(() => searchRef.current?.focus(), 50);
+    else setQuery("");
+  }, [show]);
+
+  const selectedTask = availableTasks.find((t) => t.id === selectedId) || null;
+
+  const filtered = availableTasks.filter(
+    (t) =>
+      t.title.toLowerCase().includes(query.toLowerCase()) ||
+      (t.column?.name || "").toLowerCase().includes(query.toLowerCase()),
+  );
+
+  // Group by column
+  const grouped = filtered.reduce((acc, task) => {
+    const col = task.column?.name || "Unknown";
+    if (!acc[col]) acc[col] = [];
+    acc[col].push(task);
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-2">
+      {/* Trigger row */}
+      <div className="flex gap-2">
+        <div ref={dropdownRef} className="relative flex-1">
+          <button
+            type="button"
+            onClick={onToggle}
+            className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-all ${
+              show
+                ? "border-ocean ring-2 ring-ocean/20 bg-white"
+                : selectedTask
+                  ? "border-ocean/40 bg-ocean/5 text-charcoal"
+                  : "border-cream-border bg-white text-gray-medium hover:border-ocean/40"
+            }`}
+          >
+            {/* Left icon */}
+            <svg
+              className="w-4 h-4 shrink-0 text-gray-medium"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+              />
+            </svg>
+
+            {selectedTask ? (
+              <span className="flex-1 min-w-0 text-left">
+                <span className="block text-sm font-medium text-charcoal truncate">
+                  {selectedTask.title}
+                </span>
+                <span className="text-[11px] text-gray-medium">
+                  {selectedTask.column?.name || "Unknown column"}
+                </span>
+              </span>
+            ) : (
+              <span className="flex-1 text-left text-sm text-gray-medium">
+                Select a task to block this one…
+              </span>
+            )}
+
+            {/* Priority dot if selected */}
+            {selectedTask && (
+              <span
+                className={`flex items-center gap-1 text-[11px] font-medium shrink-0 ${
+                  PRIORITY_BADGE[selectedTask.priority]?.text || "text-gray-500"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    PRIORITY_BADGE[selectedTask.priority]?.dot || "bg-gray-400"
+                  }`}
+                />
+                {PRIORITY_BADGE[selectedTask.priority]?.label ||
+                  selectedTask.priority}
+              </span>
+            )}
+
+            {/* Chevron */}
+            <svg
+              className={`w-4 h-4 shrink-0 text-gray-medium transition-transform ${show ? "rotate-180" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          {/* Dropdown panel */}
+          {show && (
+            <div
+              className="absolute left-0 right-0 top-full mt-1.5 z-50 bg-white rounded-2xl border border-cream-border overflow-hidden"
+              style={{ boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}
+            >
+              {/* Search */}
+              <div className="p-2 border-b border-cream-border">
+                <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-cream-light border border-cream-border focus-within:border-ocean focus-within:ring-2 focus-within:ring-ocean/20 transition-all">
+                  <svg
+                    className="w-3.5 h-3.5 text-gray-medium shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && onClose()}
+                    placeholder="Search tasks…"
+                    className="flex-1 bg-transparent text-sm text-charcoal placeholder-gray-medium outline-none"
+                  />
+                  {query && (
+                    <button
+                      onClick={() => setQuery("")}
+                      className="p-0.5 rounded text-gray-medium hover:text-charcoal transition-colors"
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M6 18L18 6M6 6l12 12"
+                        />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* List */}
+              <div className="max-h-56 overflow-y-auto">
+                {availableTasks.length === 0 ? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm font-medium text-charcoal">
+                      No tasks available
+                    </p>
+                    <p className="text-xs text-gray-medium mt-1">
+                      All board tasks are already dependencies
+                    </p>
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="px-4 py-6 text-center">
+                    <p className="text-sm text-gray-medium">
+                      No tasks match &ldquo;{query}&rdquo;
+                    </p>
+                  </div>
+                ) : (
+                  Object.entries(grouped).map(([colName, tasks]) => (
+                    <div key={colName}>
+                      {/* Column header */}
+                      <div className="px-3 pt-2.5 pb-1 flex items-center gap-2">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-medium">
+                          {colName}
+                        </span>
+                        <div className="flex-1 h-px bg-cream-border" />
+                        <span className="text-[10px] text-gray-medium">
+                          {tasks.length}
+                        </span>
+                      </div>
+
+                      {tasks.map((t) => {
+                        const badge =
+                          PRIORITY_BADGE[t.priority] || PRIORITY_BADGE.medium;
+                        const isSelected = selectedId === t.id;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              onSelect(t.id);
+                              onClose();
+                            }}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                              isSelected
+                                ? "bg-ocean/10 text-ocean"
+                                : "hover:bg-cream-light text-charcoal"
+                            }`}
+                          >
+                            {/* Priority dot */}
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${badge.dot}`}
+                            />
+
+                            {/* Title */}
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-sm font-medium truncate">
+                                {t.title}
+                              </span>
+                              {t.assignees?.length > 0 && (
+                                <span className="text-[11px] text-gray-medium">
+                                  {t.assignees
+                                    .map((a) => a.name || a.email)
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </span>
+                              )}
+                            </span>
+
+                            {/* Priority label */}
+                            <span
+                              className={`text-[11px] font-medium shrink-0 ${badge.text}`}
+                            >
+                              {badge.label}
+                            </span>
+
+                            {/* Check */}
+                            {isSelected && (
+                              <svg
+                                className="w-4 h-4 text-ocean shrink-0"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Footer count */}
+              {availableTasks.length > 0 && (
+                <div className="px-3 py-2 border-t border-cream-border bg-cream-light/40">
+                  <p className="text-[11px] text-gray-medium">
+                    {filtered.length} of {availableTasks.length} task
+                    {availableTasks.length !== 1 ? "s" : ""}
+                    {query ? " match" : " available"}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Add button */}
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={!selectedId || isAdding}
+          className="px-3 py-2 rounded-xl text-sm font-medium text-white bg-ocean hover:bg-ocean/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 flex items-center gap-1.5"
+        >
+          {isAdding ? (
+            <svg
+              className="w-4 h-4 animate-spin"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8v8H4z"
+              />
+            </svg>
+          ) : (
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          )}
+          {isAdding ? "Adding…" : "Add"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Dependency list ───────────────────────────────────────────────────────────
+function DependencyList({
+  title,
+  tasks,
+  emptyLabel,
+  onRemove,
+  isRemoving = false,
+}) {
   return (
     <div>
       <p className="text-xs font-medium uppercase mb-2 text-gray-medium">
@@ -1012,7 +1367,7 @@ function ActivityLog({ taskId }) {
     <div className="space-y-3">
       {logs.map((log) => (
         <div key={log.id} className="flex gap-3 items-start">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium text-white bg-ocean flex-shrink-0">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium text-white bg-ocean shrink-0">
             {log.user?.name?.[0]?.toUpperCase() || "?"}
           </div>
           <div className="flex-1 min-w-0">

@@ -1,5 +1,8 @@
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
@@ -8,30 +11,43 @@ import { taskApi } from "../../api/tasks";
 import { useConfirm } from "../ui/useConfirm";
 
 const COLUMN_ACCENT_COLORS = {
-  "To Do":      "#6CC4A1",
+  "To Do": "#6CC4A1",
   "In Progress": "#4CACBC",
-  "In Review":  "#A0D995",
-  "Done":       "#F6E3C5",
+  "In Review": "#A0D995",
+  Done: "#F6E3C5",
 };
 
 // Deterministic color for custom columns derived from the column ID
 const CUSTOM_COLORS = [
-  "#818cf8", "#fb923c", "#f472b6", "#34d399",
-  "#60a5fa", "#a78bfa", "#facc15", "#2dd4bf",
+  "#818cf8",
+  "#fb923c",
+  "#f472b6",
+  "#34d399",
+  "#60a5fa",
+  "#a78bfa",
+  "#facc15",
+  "#2dd4bf",
 ];
 
 function columnAccentColor(column) {
   // Use the stored color if one was explicitly set
   if (column.color) return column.color;
   // Fall back to the named-column map
-  if (COLUMN_ACCENT_COLORS[column.name]) return COLUMN_ACCENT_COLORS[column.name];
+  if (COLUMN_ACCENT_COLORS[column.name])
+    return COLUMN_ACCENT_COLORS[column.name];
   // Deterministic fallback for any unrecognised custom column
   let hash = 0;
-  for (let i = 0; i < column.id.length; i++) hash = column.id.charCodeAt(i) + ((hash << 5) - hash);
+  for (let i = 0; i < column.id.length; i++)
+    hash = column.id.charCodeAt(i) + ((hash << 5) - hash);
   return CUSTOM_COLORS[Math.abs(hash) % CUSTOM_COLORS.length];
 }
 
-export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin = false }) {
+export default function KanbanColumn({
+  column,
+  tasks = [],
+  onTaskClick,
+  isAdmin = false,
+}) {
   const { setNodeRef: setColumnRef, isOver } = useDroppable({
     id: column.id,
     data: { type: "column", columnId: column.id },
@@ -56,7 +72,8 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
       setIsAdding(false);
       toast.success("Task created");
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to create task"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to create task"),
   });
 
   const deleteMutation = useMutation({
@@ -65,7 +82,8 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
       queryClient.invalidateQueries(["board"]);
       toast.success(`Column "${column.name}" deleted`);
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to delete column"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to delete column"),
   });
 
   const renameMutation = useMutation({
@@ -75,7 +93,8 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
       setIsEditing(false);
       toast.success("Column renamed");
     },
-    onError: (err) => toast.error(err.response?.data?.message || "Failed to rename column"),
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "Failed to rename column"),
   });
 
   const handleAddTask = (e) => {
@@ -104,7 +123,7 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
       {ConfirmDialog}
       <div
         ref={setColumnRef}
-        className={`group flex-shrink-0 w-72 rounded-xl flex flex-col max-h-full transition-all ${isOver ? "ring-2 ring-ocean ring-offset-2" : ""}`}
+        className={`group shrink-0 w-72 rounded-xl flex flex-col max-h-full transition-all ${isOver ? "ring-2 ring-ocean ring-offset-2" : ""}`}
         style={{
           backgroundColor: "#FAF0E4",
           boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
@@ -122,10 +141,18 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
                 autoFocus
                 onKeyDown={(e) => e.key === "Escape" && setIsEditing(false)}
               />
-              <button type="submit" disabled={renameMutation.isPending} className="text-xs px-2 py-1 rounded font-medium text-white bg-ocean disabled:opacity-50">
+              <button
+                type="submit"
+                disabled={renameMutation.isPending}
+                className="text-xs px-2 py-1 rounded font-medium text-white bg-ocean disabled:opacity-50"
+              >
                 {renameMutation.isPending ? "…" : "Save"}
               </button>
-              <button type="button" onClick={() => setIsEditing(false)} className="text-xs px-2 py-1 rounded text-gray-medium hover:bg-white/60">
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="text-xs px-2 py-1 rounded text-gray-medium hover:bg-white/60"
+              >
                 ✕
               </button>
             </form>
@@ -133,9 +160,16 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
             <>
               <div className="flex items-center gap-2">
                 <h3
-                className={`text-sm font-semibold text-charcoal ${isAdmin ? "cursor-pointer" : ""}`}
-                onDoubleClick={isAdmin ? () => { setEditName(column.name); setIsEditing(true); } : undefined}
-                title={isAdmin ? "Double-click to rename" : undefined}
+                  className={`text-sm font-semibold text-charcoal ${isAdmin ? "cursor-pointer" : ""}`}
+                  onDoubleClick={
+                    isAdmin
+                      ? () => {
+                          setEditName(column.name);
+                          setIsEditing(true);
+                        }
+                      : undefined
+                  }
+                  title={isAdmin ? "Double-click to rename" : undefined}
                 >
                   {column.name}
                 </h3>
@@ -147,34 +181,58 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
                 </span>
               </div>
               {isAdmin && (
-              <button
-                onClick={handleDeleteColumn}
-                disabled={deleteMutation.isPending}
-                className="p-1 rounded text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                title="Delete column"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
+                <button
+                  onClick={handleDeleteColumn}
+                  disabled={deleteMutation.isPending}
+                  className="p-1 rounded text-gray-medium hover:text-red-500 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                  title="Delete column"
+                >
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                </button>
               )}
             </>
           )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2">
-          <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+          <SortableContext
+            items={tasks.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
+          >
             {tasks.map((task) => (
-              <TaskCard key={task.id} task={task} onClick={onTaskClick} desaturated={isDone} isAdmin={isAdmin} />
+              <TaskCard
+                key={task.id}
+                task={task}
+                onClick={onTaskClick}
+                desaturated={isDone}
+                isAdmin={isAdmin}
+              />
             ))}
           </SortableContext>
           {tasks.length === 0 && !isAdding && (
-            <div className="py-8 text-center text-sm text-gray-medium">No tasks</div>
+            <div className="py-8 text-center text-sm text-gray-medium">
+              No tasks
+            </div>
           )}
         </div>
 
         {isAdding ? (
-          <form onSubmit={handleAddTask} className="p-3 border-t border-cream-border space-y-2">
+          <form
+            onSubmit={handleAddTask}
+            className="p-3 border-t border-cream-border space-y-2"
+          >
             <input
               type="text"
               value={newTaskTitle}
@@ -194,7 +252,10 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
               </button>
               <button
                 type="button"
-                onClick={() => { setIsAdding(false); setNewTaskTitle(""); }}
+                onClick={() => {
+                  setIsAdding(false);
+                  setNewTaskTitle("");
+                }}
                 className="px-3 py-1.5 text-sm rounded-md text-gray-medium hover:bg-white/60"
               >
                 Cancel
@@ -204,10 +265,20 @@ export default function KanbanColumn({ column, tasks = [], onTaskClick, isAdmin 
         ) : (
           <button
             onClick={() => setIsAdding(true)}
-            className="mx-3 mb-3 py-2 text-sm flex items-center gap-1 rounded-md hover:bg-white/50 transition-colors text-mint"
+            className="mx-3 my-2 py-2 text-sm flex items-center gap-1 rounded-md hover:bg-white/50 transition-colors text-mint"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             Add task
           </button>

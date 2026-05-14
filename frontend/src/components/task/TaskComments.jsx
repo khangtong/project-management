@@ -394,7 +394,7 @@ export default function TaskComments({ taskId, workspaceId, comments = [] }) {
                         className={`relative max-w-[85%] ${isOwn ? "items-end" : "items-start"}`}
                       >
                         <div
-                          className={`px-3.5 py-2.5 text-sm rounded-2xl whitespace-pre-wrap break-words leading-relaxed ${
+                          className={`px-3.5 py-2.5 text-sm rounded-2xl whitespace-pre-wrap wrap-break-word leading-relaxed ${
                             isOwn
                               ? "bg-ocean text-white rounded-tr-sm"
                               : "bg-cream-light text-charcoal rounded-tl-sm border border-cream-border"
